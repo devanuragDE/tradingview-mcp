@@ -1,0 +1,20 @@
+# Dynamic Watchlist Configuration
+# Add any US Stock/ETF (e.g. QQQ, SPY, AAPL, NVDA) or Indian Stock (e.g. TCS.NS, RELIANCE.NS)
+# Lines starting with # are comments.
+
+# ─── US ETFs & MegaCap Tech ──────────────────────────────────────────
+QQQ
+SPY
+NVDA
+AAPL
+MSFT
+AMZN
+GOOGL
+META
+TSLA
+
+# ─── Indian Market Leaders ───────────────────────────────────────────
+TCS.NS
+RELIANCE.NS
+INFY.NS
+HDFCBANK.NS

@@ -13,6 +13,7 @@ import os
 import sys
 import requests
 from datetime import datetime, timezone
+import time
 from pathlib import Path
 
 # Add project root to sys.path
@@ -41,6 +42,92 @@ DEFAULT_WATCHLIST = [
     {"symbol": "TCS", "exchange": "NSE", "screener": "india", "name": "Tata Consultancy Services"},
     {"symbol": "RELIANCE", "exchange": "NSE", "screener": "india", "name": "Reliance Industries"},
 ]
+
+
+ETF_EXCHANGES = {
+    "SPY": "AMEX",
+    "IWM": "AMEX",
+    "VOO": "AMEX",
+    "VTI": "AMEX",
+    "QQQ": "NASDAQ",
+    "XLK": "AMEX",
+    "SMH": "AMEX",
+    "SOXX": "NASDAQ",
+    "XLF": "AMEX",
+    "XLE": "AMEX",
+}
+
+
+def load_watchlist(auto_screen: bool = False, custom_symbols: list[str] = None) -> list[dict]:
+    """Dynamically load watchlist from CLI flags, env var, watchlist.txt, auto-screener, or defaults."""
+    items = []
+
+    def _resolve_symbol(raw_sym: str) -> dict:
+        sym = raw_sym.strip().upper()
+        if ".NS" in sym or sym.endswith("-IN"):
+            clean = sym.replace(".NS", "").replace("-IN", "")
+            return {"symbol": clean, "exchange": "NSE", "screener": "india", "name": clean}
+        ex = ETF_EXCHANGES.get(sym, "NASDAQ")
+        return {"symbol": sym, "exchange": ex, "screener": "america", "name": sym}
+
+    # 1. Custom Symbols passed via CLI --symbols
+    if custom_symbols:
+        for sym in custom_symbols:
+            if sym.strip():
+                items.append(_resolve_symbol(sym))
+        if items:
+            return items
+
+    # 2. Environment Variable WATCHLIST="QQQ,SPY,AAPL,TCS.NS"
+    env_watchlist = os.environ.get("WATCHLIST")
+    if env_watchlist:
+        for sym in env_watchlist.split(","):
+            if sym.strip():
+                items.append(_resolve_symbol(sym))
+        if items:
+            return items
+
+    # 3. Text file watchlist.txt
+    watchlist_file = SCRIPT_DIR / "watchlist.txt"
+    if watchlist_file.exists():
+        with open(watchlist_file) as f:
+            for line in f:
+                sym = line.strip().upper()
+                if not sym or sym.startswith("#"):
+                    continue
+                items.append(_resolve_symbol(sym))
+        if items:
+            return items
+
+    # 4. Auto-Screener Discovery Mode
+    if auto_screen:
+        try:
+            from tradingview_mcp.core.services.stock_screener_service import screen_stocks
+            seen = set()
+            # Top US Megacaps
+            us_res = screen_stocks(country="america", limit=10)
+            for row in us_res.get("rows", []):
+                sym = row["symbol"]
+                if sym not in seen:
+                    seen.add(sym)
+                    items.append({"symbol": sym, "exchange": row.get("exchange", "NASDAQ"), "screener": "america", "name": row.get("description", sym)})
+            
+            # Top India Megacaps (NSE)
+            in_res = screen_stocks(country="india", limit=10)
+            for row in in_res.get("rows", []):
+                sym = row["symbol"]
+                ex = row.get("exchange", "NSE")
+                if ex == "NSE" and sym not in seen:
+                    seen.add(sym)
+                    items.append({"symbol": sym, "exchange": "NSE", "screener": "india", "name": row.get("description", sym)})
+            
+            if items:
+                return items
+        except Exception as e:
+            print(f"⚠️ Auto-screener discovery fallback: {e}")
+
+    # 5. Default Watchlist
+    return DEFAULT_WATCHLIST
 
 
 # ─── ANALYSIS & STRATEGY ENGINE ────────────────────────────────────────────────
@@ -212,12 +299,18 @@ def main():
     parser = argparse.ArgumentParser(description="Automated Buy-on-Dip Stock Alert Notifier")
     parser.add_argument("--dry-run", action="store_true", help="Print alerts to console without sending network messages")
     parser.add_argument("--all-stocks", action="store_true", help="Force report for all stocks, even if not strictly in dip zone")
+    parser.add_argument("--auto-screen", action="store_true", help="Auto-discover top MegaCap market leaders dynamically using TradingView Screener API")
+    parser.add_argument("--symbols", type=str, help="Comma-separated custom stock/ETF symbols (e.g. QQQ,SPY,NVDA,TCS.NS)")
     args = parser.parse_args()
 
-    print(f"🔍 Starting Buy-on-Dip Scan at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}...")
+    custom_syms = [s.strip() for s in args.symbols.split(",")] if args.symbols else None
+    watchlist = load_watchlist(auto_screen=args.auto_screen, custom_symbols=custom_syms)
+
+    print(f"🔍 Starting Buy-on-Dip Scan for {len(watchlist)} stocks at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}...")
     alerts = []
 
-    for item in DEFAULT_WATCHLIST:
+    for item in watchlist:
+        time.sleep(0.4)
         print(f"  Fetching technical analysis for {item['symbol']} ({item['exchange']})...")
         res = analyze_stock(item)
         
