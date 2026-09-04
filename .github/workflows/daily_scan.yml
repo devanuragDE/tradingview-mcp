@@ -1,0 +1,32 @@
+name: Daily Buy-on-Dip Stock Scanner
+
+on:
+  schedule:
+    # Runs Monday to Friday at 04:00 UTC (09:30 AM IST / Market Opening)
+    - cron: '0 4 * * 1-5'
+  workflow_dispatch: # Allows triggering manually anytime from GitHub UI
+
+jobs:
+  scan_stocks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: uv sync
+
+      - name: Run Buy-on-Dip Stock Notifier
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
+          WHATSAPP_RECIPIENT: ${{ secrets.WHATSAPP_RECIPIENT }}
+        run: uv run python buy_on_dip_notifier.py
