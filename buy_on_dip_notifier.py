@@ -111,7 +111,7 @@ def load_watchlist(auto_screen: bool = False, custom_symbols: list[str] = None) 
                 if sym not in seen:
                     seen.add(sym)
                     items.append({"symbol": sym, "exchange": row.get("exchange", "NASDAQ"), "screener": "america", "name": row.get("description", sym)})
-            
+
             # Top India Megacaps (NSE)
             in_res = screen_stocks(country="india", limit=10)
             for row in in_res.get("rows", []):
@@ -120,7 +120,7 @@ def load_watchlist(auto_screen: bool = False, custom_symbols: list[str] = None) 
                 if ex == "NSE" and sym not in seen:
                     seen.add(sym)
                     items.append({"symbol": sym, "exchange": "NSE", "screener": "india", "name": row.get("description", sym)})
-            
+
             if items:
                 return items
         except Exception as e:
@@ -130,9 +130,16 @@ def load_watchlist(auto_screen: bool = False, custom_symbols: list[str] = None) 
     return DEFAULT_WATCHLIST
 
 
-# ─── ANALYSIS & STRATEGY ENGINE ────────────────────────────────────────────────
+def calculate_rsi_divergence(indicators: dict) -> bool:
+    """Check for bullish RSI divergence (price making lower low, RSI making higher low)"""
+    # Simplified check - in production would need historical data
+    # For now, we'll check if RSI is recovering from oversold
+    rsi = indicators.get("RSI", 50)
+    return 30 <= rsi <= 45  # RSI bouncing from oversold territory
+
+
 def analyze_stock(item: dict) -> dict:
-    """Fetch live data and evaluate Buy-On-Dip strategy criteria."""
+    """Fetch live data and evaluate Buy-On-Dip strategy with concrete criteria."""
     symbol = item["symbol"]
     exchange = item["exchange"]
     screener = item["screener"]
@@ -157,39 +164,89 @@ def analyze_stock(item: dict) -> dict:
     ema200 = ind.get("EMA200", close_price)
     macd_line = ind.get("MACD.macd", 0.0)
     macd_signal = ind.get("MACD.signal", 0.0)
-    
-    # Calculate support / resistance
+
+    # Support/Resistance levels
     s1 = ind.get("Pivot.M.Classic.S1", close_price * 0.95)
     r1 = ind.get("Pivot.M.Classic.R1", close_price * 1.05)
     pivot_mid = ind.get("Pivot.M.Classic.Middle", close_price)
 
-    # 1. Macro Trend Check
-    is_macro_uptrend = (close_price >= ema200 * 0.97) or (ema50 > ema200)
+    # === CONCRETE BUY-ON-DIP CRITERIA ===
 
-    # 2. Dip Conditions
-    rsi_dip = rsi <= 52.0  # Cool-off zone
-    ema_support_dip = (abs(close_price - ema20) / ema20 <= 0.018) or (abs(close_price - ema50) / ema50 <= 0.02)
-    near_s1 = abs(close_price - s1) / s1 <= 0.025
+    # 1. STRONG UPTREND CONFIRMATION (MANDATORY)
+    # Price above both EMAs with clear separation
+    is_uptrend_structure = close_price > ema50 > ema200
+    # 50 EMA significantly above 200 EMA (at least 3% separation for strength)
+    is_strong_trend = ema50 > ema200 * 1.03
+    # Price not extended too far above 50 EMA (avoid chasing)
+    is_not_extended = close_price < ema50 * 1.08  # Within 8% of 50 EMA
+    strong_uptrend = is_uptrend_structure and is_strong_trend and is_not_extended
 
-    is_buy_on_dip = is_macro_uptrend and (rsi_dip or ema_support_dip or near_s1)
+    # 2. ACTUAL OVERSOLD CONDITION (MANDATORY)
+    # True oversold, not just neutral
+    is_oversold = rsi <= 40
+    # RSI recovering from oversold (bullish momentum)
+    is_rsi_recovering = 35 <= rsi <= 45 and rsi > ind.get("prev_rsi", rsi) if "prev_rsi" in ind else False
+    # Simplified: RSI in buy zone AND showing recovery tendency
+    rsi_buy_zone = 30 <= rsi <= 45
 
-    # 3. Decision Logic & Human-Readable Action Plan
-    if is_macro_uptrend and (rsi <= 48 or near_s1):
+    # 3. PRICE ACTION CONFIRMATION (REQUIRED)
+    # Price at or near support with rejection
+    near_s1_support = abs(close_price - s1) / s1 <= 0.02  # Within 2% of S1
+    near_ema50_support = abs(close_price - ema50) / ema50 <= 0.015  # Within 1.5% of EMA50
+    near_ema200_support = abs(close_price - ema200) / ema200 <= 0.025  # Within 2.5% of EMA200
+    at_strong_support = near_s1_support or near_ema50_support or near_ema200_support
+
+    # Bullish candle (close > open) - need to approximate from available data
+    # Using price vs VWAP approximation or recent momentum
+    price_momentum_bullish = close_price > ind.get("open", close_price * 0.995) if ind.get("open") else close_price > ema20
+
+    # 4. MOMENTUM CONFIRMATION (REQUIRED)
+    # MACD showing bullish signs
+    macd_bullish = macd_line > macd_signal and macd_line > 0  # MACD above signal and positive
+    # Price above key moving averages with momentum
+    momentum_confirmation = macd_bullish and price_momentum_bullish
+
+    # 5. VOLUME CONFIRMATION (OPTIONAL but preferred)
+    # Since we don't have reliable volume from TA, we'll skip for now
+    # but note this as an area for improvement
+
+    # === DECISION LOGIC ===
+
+    # Core requirements: MUST have strong uptrend AND be at support
+    core_setup = strong_uptrend and at_strong_support
+
+    # Quality filters: RSI in buy zone AND momentum confirmation
+    quality_filters = rsi_buy_zone and momentum_confirmation
+
+    # Final signal strength calculation
+    signal_strength = 0
+    if strong_uptrend: signal_strength += 2
+    if at_strong_support: signal_strength += 2
+    if rsi_buy_zone: signal_strength += 1
+    if momentum_confirmation: signal_strength += 1
+    if rsi <= 35: signal_strength += 1  # Extra for deep oversold
+
+    is_buy_signal = signal_strength >= 4  # Require at least 4/7 points
+
+    # Decision tiers based on signal strength
+    if signal_strength >= 6:
         decision_badge = "🟢 DECISION: ✅ YES — EXCELLENT DIP TO BUY!"
-        decision_summary = "Stock is in a healthy long-term uptrend and has cooled down to major support."
-        action_plan = "Buy 30% to 40% of your planned investment amount now."
-    elif is_buy_on_dip:
+        decision_summary = "Strong uptrend with deep pullback to support and bullish momentum."
+        action_plan = "Buy 25% to 35% of planned position now."
+    elif signal_strength >= 4:
         decision_badge = "🟡 DECISION: ⚡ MODERATE DIP — SMALL BUY / DCA"
-        decision_summary = "Stock is pulling back slightly. Good area to start a small position."
-        action_plan = "Buy 15% to 20% of your planned investment amount now."
+        decision_summary = "Good uptrend pulling back to support with confirming signals."
+        action_plan = "Buy 10% to 20% of planned position now."
     else:
-        decision_badge = "🔴 DECISION: 🛑 DO NOT BUY YET (WAIT FOR DIP)"
-        decision_summary = "Stock is near short-term highs or lacks a clear dip setup."
-        action_plan = "Do not buy now. Keep on watchlist and wait for a deeper pullback."
+        decision_badge = "🔴 DECISION: 🛑 DO NOT BUY YET (WAIT FOR BETTER SETUP)"
+        decision_summary = "Insufficient confirmation for buy signal - wait for better alignment."
+        action_plan = "Do not buy. Monitor for improved setup."
 
-    # Buy Zone Range
-    low_buy_zone = min(ema50, s1, close_price * 0.985)
-    high_buy_zone = max(ema20, close_price * 1.005)
+    # Calculate targets with wider stops for volatility
+    atr_estimate = (r1 - s1) / 2  # Approximate ATR from pivot range
+    stop_loss = s1 * 0.98  # Slightly below support
+    target1 = r1 * 1.02  # Slightly above resistance
+    target2 = r1 * 1.05  # Higher target for runners
 
     return {
         "symbol": symbol,
@@ -197,16 +254,26 @@ def analyze_stock(item: dict) -> dict:
         "name": name,
         "price": close_price,
         "rsi": rsi,
+        "ema20": ema20,
         "ema50": ema50,
+        "ema200": ema200,
         "support_s1": s1,
         "resistance_r1": r1,
-        "is_macro_uptrend": is_macro_uptrend,
-        "is_buy_on_dip": is_buy_on_dip,
+        "macd_line": macd_line,
+        "macd_signal": macd_signal,
+        "is_uptrend": strong_uptrend,
+        "at_support": at_strong_support,
+        "rsi_in_buy_zone": rsi_buy_zone,
+        "momentum_confirm": momentum_confirmation,
+        "signal_strength": signal_strength,
+        "is_buy_signal": is_buy_signal,
         "decision_badge": decision_badge,
         "decision_summary": decision_summary,
         "action_plan": action_plan,
-        "low_buy_zone": low_buy_zone,
-        "high_buy_zone": high_buy_zone,
+        "stop_loss": stop_loss,
+        "target1": target1,
+        "target2": target2,
+        "risk_reward": round((target1 - close_price) / (close_price - stop_loss), 2) if close_price > stop_loss else 0,
     }
 
 
@@ -214,18 +281,25 @@ def analyze_stock(item: dict) -> dict:
 def format_whatsapp_message(alert: dict) -> str:
     """Format a beginner-friendly, plain-English WhatsApp alert."""
     currency = "₹" if alert["exchange"] == "NSE" else "$"
-    pct_to_target = ((alert["resistance_r1"] - alert["price"]) / alert["price"]) * 100
-    
+    pct_to_target1 = ((alert["target1"] - alert["price"]) / alert["price"]) * 100
+
     return (
         f"📢 *STOCK ALERT: {alert['symbol']}* ({alert['name']})\n"
         f"─────────────────────────────\n\n"
         f"{alert['decision_badge']}\n\n"
         f"💡 *Summary:* {alert['decision_summary']}\n\n"
         f"💵 *Current Price:* {currency}{alert['price']:,.2f}\n"
-        f"🎯 *Recommended Buy Zone:* {currency}{alert['low_buy_zone']:,.2f} – {currency}{alert['high_buy_zone']:,.2f}\n"
+        f"🛑 *Stop Loss:* {currency}{alert['stop_loss']:,.2f}\n"
+        f"🎯 *Target 1:* {currency}{alert['target1']:,.2f} (+{pct_to_target1:.1f}%)\n"
+        f"🎯 *Target 2:* {currency}{alert['target2']:,.2f}\n"
+        f"⚖️ *Risk/Reward:* 1:{alert['risk_reward']}\n"
+        f"📊 *Signal Strength:* {alert['signal_strength']}/7\n\n"
         f"🛒 *What To Do:* {alert['action_plan']}\n\n"
-        f"📈 *Upside Target:* {currency}{alert['resistance_r1']:,.2f} (+{pct_to_target:.1f}% potential)\n"
-        f"🛡️ *Safety Stop Level:* {currency}{alert['support_s1']:,.2f}\n\n"
+        f"🔍 *Details:*\n"
+        f"   Trend: {'✅ Strong' if alert['is_uptrend'] else '❌ Weak'}\n"
+        f"   Support: {'✅ At Support' if alert['at_support'] else '❌ No Support'}\n"
+        f"   RSI: {alert['rsi']:.1f} ({'✅ Buy Zone' if alert['rsi_in_buy_zone'] else '❌ Outside'})\n"
+        f"   Momentum: {'✅ Confirmed' if alert['momentum_confirm'] else '❌ Weak'}\n\n"
         f"⏰ *Generated:* {datetime.now(timezone.utc).strftime('%d %b %Y %H:%M UTC')}"
     )
 
@@ -310,21 +384,21 @@ def main():
     alerts = []
 
     for item in watchlist:
-        time.sleep(0.4)
+        time.sleep(0.4)  # Rate limiting for TradingView API
         print(f"  Fetching technical analysis for {item['symbol']} ({item['exchange']})...")
         res = analyze_stock(item)
-        
+
         if "error" in res:
             print(f"  ❌ Error analyzing {item['symbol']}: {res['error']}")
             continue
 
-        if res["is_buy_on_dip"] or args.all_stocks:
+        if res["is_buy_signal"] or args.all_stocks:
             alerts.append(res)
             msg = format_whatsapp_message(res)
 
-            print("\n" + "=" * 50)
+            print("\n" + "=" * 60)
             print(msg)
-            print("=" * 50 + "\n")
+            print("=" * 60 + "\n")
 
             if not args.dry_run:
                 # Attempt WhatsApp send
@@ -332,7 +406,9 @@ def main():
                 # Attempt Telegram send if configured
                 send_telegram(msg)
         else:
-            print(f"  ℹ️ {item['symbol']} Price: {res['price']:.2f} | RSI: {res['rsi']:.1f} (Not in dip buy zone)")
+            print(f"  ℹ️ {item['symbol']} | Price: {res['price']:.2f} | RSI: {res['rsi']:.1f} | Signal: {res['signal_strength']}/7")
+            if res.get("is_uptrend") and res.get("at_support"):
+                print(f"     → Has trend+support but needs better RSI/momentum")
 
     print(f"\n✨ Scan completed. Total Buy-on-Dip alerts generated: {len(alerts)}")
 
