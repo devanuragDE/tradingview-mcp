@@ -16,7 +16,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 import database
-from buy_on_dip_notifier import analyze_stock, format_whatsapp_message, send_telegram, send_whatsapp_meta
+from buy_on_dip_notifier import analyze_stock, batch_fetch_tradingview, format_whatsapp_message, send_telegram, send_whatsapp_meta
 
 
 @asynccontextmanager
@@ -108,8 +108,11 @@ def get_live_signals(all_stocks: bool = Query(False, description="Return analysi
     watchlist = database.get_all_watchlist_items()
     signals = []
 
+    # Batch preload TradingView indicators for all watchlist items in 1 batch query
+    tv_batch = batch_fetch_tradingview(watchlist)
+
     for item in watchlist:
-        res = analyze_stock(dict(item))
+        res = analyze_stock(dict(item), preloaded_ind=tv_batch)
         if "error" in res:
             continue
         
@@ -160,8 +163,9 @@ def get_signal_history(limit: int = 50):
 def _run_scan_and_notify_task():
     """Background worker task to run scan and dispatch notifications."""
     watchlist = database.get_all_watchlist_items()
+    tv_batch = batch_fetch_tradingview(watchlist)
     for item in watchlist:
-        res = analyze_stock(dict(item))
+        res = analyze_stock(dict(item), preloaded_ind=tv_batch)
         if "error" in res:
             continue
         if res.get("is_buy_on_dip") or res.get("is_buy_signal"):
