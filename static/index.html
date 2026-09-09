@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buy-on-Dip Trading Cockpit v2.0</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#ecfdf5', 500: '#10b981', 600: '#059669', 700: '#047857' },
+            dark: { 800: '#111827', 900: '#0b0f19', 950: '#05070c' }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- React & Babel for Instant Client-Side Rendering -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { background-color: #0b0f19; color: #f3f4f6; font-family: system-ui, -apple-system, sans-serif; }
+    .glass-card { background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .glass-card:hover { border-color: rgba(16, 185, 129, 0.3); }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [watchlist, setWatchlist] = useState([]);
+      const [signals, setSignals] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [scanning, setScanning] = useState(false);
+      const [activeTab, setActiveTab] = useState('dips');
+      const [showAddModal, setShowAddModal] = useState(false);
+      const [newSymbol, setNewSymbol] = useState('');
+      const [newCategory, setNewCategory] = useState('US Tech');
+
+      useEffect(() => {
+        fetchWatchlist();
+        fetchSignals();
+      }, []);
+
+      const fetchWatchlist = async () => {
+        try {
+          const res = await fetch('/api/watchlist');
+          const data = await res.json();
+          setWatchlist(data.data || []);
+        } catch (err) {
+          console.error('Error fetching watchlist:', err);
+        }
+      };
+
+      const fetchSignals = async () => {
+        setLoading(true);
+        try {
+          const res = await fetch('/api/signals?all_stocks=true');
+          const data = await res.json();
+          setSignals(data.signals || []);
+        } catch (err) {
+          console.error('Error fetching signals:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const triggerScan = async () => {
+        setScanning(true);
+        try {
+          await fetch('/api/scan', { method: 'POST' });
+          alert('⚡ Cloud scan & alert dispatch triggered successfully!');
+          fetchSignals();
+        } catch (err) {
+          alert('Failed to trigger scan');
+        } finally {
+          setScanning(false);
+        }
+      };
+
+      const handleAddStock = async (e) => {
+        e.preventDefault();
+        if (!newSymbol) return;
+        try {
+          await fetch('/api/watchlist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: newSymbol, category: newCategory })
+          });
+          setNewSymbol('');
+          setShowAddModal(false);
+          fetchWatchlist();
+          fetchSignals();
+        } catch (err) {
+          alert('Failed to add stock');
+        }
+      };
+
+      const handleDeleteStock = async (symbol) => {
+        if (!confirm(`Remove ${symbol} from watchlist?`)) return;
+        try {
+          await fetch(`/api/watchlist/${symbol}`, { method: 'DELETE' });
+          fetchWatchlist();
+          fetchSignals();
+        } catch (err) {
+          alert('Failed to delete stock');
+        }
+      };
+
+      // Filtered Signals
+      const dipSignals = signals.filter(s => s.is_buy_on_dip);
+      const displayedSignals = activeTab === 'dips' ? dipSignals : signals;
+
+      return (
+        <div class="max-w-7xl mx-auto px-4 py-8">
+          {/* Header Bar */}
+          <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 pb-6 border-b border-gray-800">
+            <div>
+              <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
+                  📈
+                </div>
+                <div>
+                  <h1 class="text-2xl font-bold text-white tracking-tight">Buy-on-Dip Trading Cockpit</h1>
+                  <p class="text-sm text-gray-400">Multi-Market Technical Intelligence & Automated Telegram Alerts</p>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <button 
+                onClick={() => setShowAddModal(true)}
+                class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-medium border border-gray-700 transition flex items-center gap-2"
+              >
+                <span>➕ Add Stock</span>
+              </button>
+              <button 
+                onClick={triggerScan}
+                disabled={scanning}
+                class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-900/30 transition flex items-center gap-2"
+              >
+                <span>{scanning ? '⏳ Scanning...' : '⚡ Trigger Cloud Scan'}</span>
+              </button>
+            </div>
+          </header>
+
+          {/* Metric Cards */}
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="glass-card p-5 rounded-2xl">
+              <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Tracked Watchlist</div>
+              <div class="text-3xl font-extrabold text-white">{watchlist.length} <span class="text-xs font-normal text-gray-400">Stocks/ETFs</span></div>
+            </div>
+            <div class="glass-card p-5 rounded-2xl border-emerald-500/30">
+              <div class="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-1">Active Buy-on-Dip Signals</div>
+              <div class="text-3xl font-extrabold text-emerald-400">{dipSignals.length} <span class="text-xs font-normal text-gray-400">Opportunities</span></div>
+            </div>
+            <div class="glass-card p-5 rounded-2xl">
+              <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Market Coverage</div>
+              <div class="text-lg font-bold text-white flex items-center gap-2 mt-1">
+                <span>🇺🇸 US (NASDAQ/NYSE)</span>
+                <span>🇮🇳 India (NSE)</span>
+              </div>
+            </div>
+            <div class="glass-card p-5 rounded-2xl">
+              <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Cloud Automation</div>
+              <div class="text-sm font-medium text-emerald-400 flex items-center gap-1.5 mt-2">
+                <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                <span>GitHub Actions Active (100% Free)</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Filter Tabs */}
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex bg-gray-900/80 p-1.5 rounded-xl border border-gray-800">
+              <button 
+                onClick={() => setActiveTab('dips')}
+                class={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'dips' ? 'bg-emerald-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+              >
+                🎯 Active Dips ({dipSignals.length})
+              </button>
+              <button 
+                onClick={() => setActiveTab('all')}
+                class={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'all' ? 'bg-emerald-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+              >
+                📊 All Watchlist ({signals.length})
+              </button>
+            </div>
+            <button onClick={fetchSignals} class="text-sm text-gray-400 hover:text-white flex items-center gap-1">
+              🔄 Refresh Data
+            </button>
+          </div>
+
+          {/* Signal Cards Grid */}
+          {loading ? (
+            <div class="text-center py-20 text-gray-500">
+              <div class="text-4xl mb-3 animate-spin inline-block">⚙️</div>
+              <p>Evaluating Technical Indicators & Support Levels...</p>
+            </div>
+          ) : displayedSignals.length === 0 ? (
+            <div class="text-center py-20 glass-card rounded-2xl border-dashed border-gray-800">
+              <div class="text-5xl mb-3">🛡️</div>
+              <h3 class="text-lg font-bold text-white mb-1">No Active Dips Detected</h3>
+              <p class="text-sm text-gray-400 max-w-md mx-auto">All tracked stocks are currently trading above support zones or near peaks. The system is waiting for market pullbacks.</p>
+            </div>
+          ) : (
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {displayedSignals.map((item, idx) => {
+                const currency = item.exchange === 'NSE' ? '₹' : '$';
+                const isBuy = item.is_buy_on_dip;
+                return (
+                  <div key={idx} class="glass-card rounded-2xl p-6 relative flex flex-col justify-between transition group">
+                    <div>
+                      {/* Top Row: Symbol & Delete Button */}
+                      <div class="flex justify-between items-start mb-3">
+                        <div>
+                          <div class="flex items-center gap-2">
+                            <span class="text-xl font-black text-white group-hover:text-emerald-400 transition">{item.symbol}</span>
+                            <span class="text-xs font-bold px-2 py-0.5 bg-gray-800 text-gray-300 rounded-md border border-gray-700">{item.exchange}</span>
+                          </div>
+                          <div class="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{item.name}</div>
+                        </div>
+                        <button 
+                          onClick={() => handleDeleteStock(item.symbol)}
+                          class="text-gray-500 hover:text-red-400 text-sm transition opacity-0 group-hover:opacity-100"
+                          title="Remove from Watchlist"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+
+                      {/* Decision Badge */}
+                      <div class="mb-4">
+                        <span class={`inline-block px-3 py-1.5 rounded-xl text-xs font-extrabold tracking-wide ${isBuy ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}>
+                          {item.decision_badge}
+                        </span>
+                      </div>
+
+                      {/* Summary */}
+                      <p class="text-xs text-gray-300 mb-4 leading-relaxed bg-gray-900/50 p-3 rounded-xl border border-gray-800/80">
+                        {item.decision_summary}
+                      </p>
+
+                      {/* Metric Grid */}
+                      <div class="grid grid-cols-2 gap-3 mb-4 text-xs">
+                        <div class="bg-gray-900/40 p-2.5 rounded-xl border border-gray-800">
+                          <div class="text-gray-400 mb-0.5">Current Price</div>
+                          <div class="text-base font-bold text-white">{currency}{item.price.toLocaleString()}</div>
+                        </div>
+                        <div class="bg-gray-900/40 p-2.5 rounded-xl border border-gray-800">
+                          <div class="text-gray-400 mb-0.5">RSI (14)</div>
+                          <div class={`text-base font-bold ${item.rsi <= 48 ? 'text-emerald-400' : 'text-gray-300'}`}>{item.rsi.toFixed(1)}</div>
+                        </div>
+                        <div class="bg-gray-900/40 p-2.5 rounded-xl border border-gray-800 col-span-2">
+                          <div class="text-gray-400 mb-0.5">Recommended Buy Zone</div>
+                          <div class="text-sm font-semibold text-emerald-400">{currency}{item.low_buy_zone.toFixed(2)} – {currency}{item.high_buy_zone.toFixed(2)}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer / Action Plan */}
+                    <div class="pt-3 border-t border-gray-800 flex justify-between items-center text-xs">
+                      <div class="text-gray-400">Target: <span class="font-bold text-emerald-400">{currency}{item.resistance_r1.toFixed(2)}</span></div>
+                      <a 
+                        href={`https://www.tradingview.com/chart/?symbol=${item.exchange}:${item.symbol}`} 
+                        target="_blank" 
+                        class="text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                      >
+                        Chart ↗
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Add Stock Modal */}
+          {showAddModal && (
+            <div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div class="glass-card max-w-md w-full p-6 rounded-2xl border border-gray-700 shadow-2xl">
+                <h3 class="text-lg font-bold text-white mb-4">Add Ticker to Watchlist</h3>
+                <form onSubmit={handleAddStock} class="space-y-4 text-xs">
+                  <div>
+                    <label class="block text-gray-400 mb-1">Stock / ETF Ticker</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. QQQ, NVDA, TCS.NS, RELIANCE.NS" 
+                      value={newSymbol}
+                      onChange={e => setNewSymbol(e.target.value)}
+                      class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white focus:border-emerald-500 outline-none text-sm"
+                      required
+                    />
+                    <p class="text-[11px] text-gray-500 mt-1">Use .NS for Indian stocks (e.g. INFY.NS, HDFCBANK.NS)</p>
+                  </div>
+                  <div>
+                    <label class="block text-gray-400 mb-1">Category</label>
+                    <select 
+                      value={newCategory} 
+                      onChange={e => setNewCategory(e.target.value)}
+                      class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white focus:border-emerald-500 outline-none text-sm"
+                    >
+                      <option value="US Tech">US Tech / Growth</option>
+                      <option value="US ETFs">US ETFs</option>
+                      <option value="India Bluechip">India Bluechips</option>
+                      <option value="Custom">Custom</option>
+                    </select>
+                  </div>
+                  <div class="flex justify-end gap-3 pt-2">
+                    <button 
+                      type="button" 
+                      onClick={() => setShowAddModal(false)}
+                      class="px-4 py-2 text-gray-400 hover:text-white rounded-xl"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      type="submit" 
+                      class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl"
+                    >
+                      Add Ticker
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
