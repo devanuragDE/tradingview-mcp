@@ -67,7 +67,12 @@
         try {
           const res = await fetch('/api/signals?all_stocks=true');
           const data = await res.json();
-          setSignals(data.signals || []);
+          const sigs = data.signals || [];
+          setSignals(sigs);
+          const dips = sigs.filter(s => s.is_buy_on_dip);
+          if (dips.length === 0 && sigs.length > 0) {
+            setActiveTab('all');
+          }
         } catch (err) {
           console.error('Error fetching signals:', err);
         } finally {

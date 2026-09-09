@@ -6,7 +6,9 @@ Serves Web Dashboard endpoints, Watchlist management, and Live Signal Engine.
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from typing import Optional
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -16,10 +18,19 @@ from pydantic import BaseModel
 import database
 from buy_on_dip_notifier import analyze_stock, format_whatsapp_message, send_telegram, send_whatsapp_meta
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown database initialization."""
+    database.init_db()
+    yield
+
+
 app = FastAPI(
     title="Buy-on-Dip Trading Intelligence API",
     description="REST API for multi-market stock screening, dynamic watchlists, and live alerts",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
 # Enable CORS for Next.js / React Frontend Development
@@ -33,11 +44,6 @@ app.add_middleware(
 
 # Mount Web Dashboard UI
 app.mount("/dashboard", StaticFiles(directory="static", html=True), name="dashboard")
-
-
-@app.on_event("startup")
-def startup_event():
-    database.init_db()
 
 
 # ─── PYDANTIC SCHEMAS ────────────────────────────────────────────────────────
@@ -59,6 +65,7 @@ class ScanResponse(BaseModel):
 
 @app.get("/")
 def read_root():
+    """Redirect root path to Web Dashboard UI."""
     return RedirectResponse(url="/dashboard")
 
 
@@ -108,7 +115,7 @@ def get_live_signals(all_stocks: bool = Query(False, description="Return analysi
         
         # Calculate 0-100 Dip Score
         score = 40
-        if res.get("is_macro_uptrend"):
+        if res.get("is_uptrend") or res.get("is_macro_uptrend"):
             score += 25
         rsi = res.get("rsi", 50)
         if rsi <= 45:
@@ -118,7 +125,16 @@ def get_live_signals(all_stocks: bool = Query(False, description="Return analysi
         
         res["dip_score"] = min(100, max(0, score))
 
-        if res["is_buy_on_dip"] or all_stocks:
+        is_buy = bool(res.get("is_buy_on_dip", res.get("is_buy_signal", False)))
+        res["is_buy_on_dip"] = is_buy
+        res["is_buy_signal"] = is_buy
+
+        if "low_buy_zone" not in res:
+            res["low_buy_zone"] = res.get("stop_loss", res.get("support_s1", res.get("price", 0.0) * 0.95))
+        if "high_buy_zone" not in res:
+            res["high_buy_zone"] = res.get("support_s1", res.get("price", 0.0))
+
+        if is_buy or all_stocks:
             signals.append(res)
             # Log to DB
             try:
@@ -148,7 +164,7 @@ def _run_scan_and_notify_task():
         res = analyze_stock(dict(item))
         if "error" in res:
             continue
-        if res.get("is_buy_on_dip"):
+        if res.get("is_buy_on_dip") or res.get("is_buy_signal"):
             msg = format_whatsapp_message(res)
             send_telegram(msg)
             send_whatsapp_meta(msg)
