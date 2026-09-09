@@ -1,45 +1,77 @@
-# 📈 100% Free Automated Buy-On-Dip Stock Alert System
+# 📈 100% Free Automated Buy-On-Dip Trading Platform & Web Cockpit v2.0
 
-An intelligent, automated stock scanner and push-notification system powered by `tradingview-mcp` technical analysis and **GitHub Actions Cloud Runner**. It monitors watchlist stocks across **US and Indian markets**, filters for high-probability accumulation dips, and delivers **plain-English decision alerts** directly to your **Telegram** or **WhatsApp** app.
-
----
-
-## 🌟 Key Features
-
-- 🤖 **Smart Dip Filtering:** Monitors trends using Golden Cross (50/200 EMA), RSI cool-off zones (30–52), and EMA support touchpoints. It alerts you **only when a stock is in a genuine buy zone**, filtering out overbought peaks.
-- 💬 **Beginner-Friendly Decision Alerts:** Zero technical jargon. Notifications give you plain-English badges:
-  - 🟢 `DECISION: ✅ YES — EXCELLENT DIP TO BUY!`
-  - 🟡 `DECISION: ⚡ MODERATE DIP — SMALL BUY / DCA`
-  - 🔴 `DECISION: 🛑 DO NOT BUY YET (WAIT FOR DIP)`
-- 🛒 **Actionable Execution Plan:** Specifies exact **Recommended Buy Range**, **Target Price (+% upside)**, **Stop Loss**, and **Allocation Suggestion** (e.g. *Buy 15–20% of budget now*).
-- 🌍 **Multi-Market Support:** Pre-configured for US equities (`QQQ`, `AAPL`, `NVDA`) and Indian equities (`TCS.NS`, `RELIANCE.NS`). Easily customizable for any ticker.
-- ☁️ **100% Free Cloud Automation:** Runs automatically every Monday–Friday at 09:30 AM IST (04:00 UTC) on GitHub's free cloud runners. No local computer required to stay powered on!
+An intelligent, automated stock scanner, web dashboard cockpit, and push-notification system powered by `tradingview-mcp` technical analysis and **GitHub Actions Cloud Runner**. It monitors watchlist stocks across **US and Indian markets**, filters for high-probability accumulation dips, and delivers **plain-English decision alerts** directly to your **Telegram** app and **Web Dashboard**.
 
 ---
 
-## 📱 Sample Telegram Alert
+## 🖥️ How to Start & Access the Web Dashboard (Beginner Guide)
+
+Follow these simple commands to launch and open the interactive Web Cockpit in your browser:
+
+### Step 1: Open Terminal and Navigate to Project
+```bash
+cd /Users/anuragraut/.gemini/antigravity/scratch/tradingview-mcp
+```
+
+### Step 2: Start the Server
+Run the following command:
+```bash
+uv run python api_server.py
+```
+*You will see the output:*
+```text
+INFO: Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO: Application startup complete.
+```
+
+### Step 3: Open in Browser
+Click or open this URL in your web browser:
+👉 **[http://localhost:8000/dashboard/](http://localhost:8000/dashboard/)**  
+*(Or root URL: [http://localhost:8000/](http://localhost:8000/))*
+
+---
+
+## 🌟 Key Dashboard Features
+
+- 🎯 **Active Buy-on-Dip Cards:** View real-time price, RSI (14), recommended buy zone range, 52-week targets, and action plans.
+- ➕ **Add Stock / ETF Ticker:** Click `➕ Add Stock` in the top bar to track any US stock (`NVDA`, `AAPL`, `QQQ`) or Indian stock (`TCS.NS`, `INFY.NS`, `RELIANCE.NS`).
+- ⚡ **Instant Cloud Scan & Telegram Alert:** Click `⚡ Trigger Cloud Scan` to evaluate all tickers live and dispatch notifications directly to your Telegram chat.
+- 📊 **Dual Market Coverage:** Pre-seeded with 34 top US MegaCaps/ETFs and Indian Bluechip leaders.
+- 🛡️ **15-Minute Intelligent Caching & Fallback:** Prevents API rate limits by caching data and seamlessly falling back to Yahoo Finance data when needed.
+
+---
+
+## 📱 Sample Telegram Alert Format
 
 ```text
-📢 STOCK ALERT: QQQ (Invesco QQQ Trust)
+📢 STOCK ALERT: TCS (Tata Consultancy Services)
 ─────────────────────────────
 
-🟡 DECISION: ⚡ MODERATE DIP — SMALL BUY / DCA
+🟡 DECISION: ⚡ MODERATE DIP
 
-💡 Summary: Stock is pulling back slightly. Good area to start a small position.
+💡 Summary: Trading at support level.
 
-💵 Current Price: $720.44
-🎯 Recommended Buy Zone: $690.19 – $724.04
-🛒 What To Do: Buy 15% to 20% of your planned investment amount now.
+💵 Current Price: ₹2,208.00
+🛑 Stop Loss: ₹2,053.40
+🎯 Target 1: ₹2,350.00 (+6.4%)
+🎯 Target 2: ₹2,400.00
+⚖️ Risk/Reward: 1:1.5
+📊 Signal Strength: 5/7
 
-📈 Upside Target: $738.95 (+2.6% potential)
-🛡️ Safety Stop Level: $690.19
+🛒 What To Do: Buy 10% to 20% on dip.
 
-⏰ Generated: 04 Sep 2026 13:52 UTC
+🔍 Details:
+   Trend: ✅ Strong
+   Support: ✅ At Support
+   RSI: 42.0 (✅ Buy Zone)
+   Momentum: ❌ Weak
+
+⏰ Generated: 09 Sep 2026 22:59 IST
 ```
 
 ---
 
-## 🚀 Quick Start & Local Setup
+## 🚀 Quick Setup & Installation
 
 ### 1. Prerequisites
 - **Python 3.10 – 3.13** installed.
@@ -57,78 +89,47 @@ cd tradingview-mcp
 uv venv && uv sync
 ```
 
-### 3. Environment Credentials Setup
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-
-Open `.env` and fill in your Telegram Bot credentials:
-```bash
+### 3. Environment Credentials Setup (`.env`)
+Ensure `.env` contains your Telegram credentials:
+```ini
 TELEGRAM_BOT_TOKEN="8867216133:AAG3S-n-mScYyyOA2qntAJCBrFkd9xBVtwc"
 TELEGRAM_CHAT_ID="707881814"
 ```
 
 ---
 
-## 📲 How to Setup Your Telegram Bot (100% Free)
+## 📲 How to Setup Telegram Bot Credentials (100% Free)
 
-1. **Create Bot:** Open Telegram, search for `@BotFather`, send `/newbot`, and follow prompts to get your `TELEGRAM_BOT_TOKEN`.
-2. **Get Chat ID:** Search for `@userinfobot` on Telegram, tap **Start**, and copy your numerical `TELEGRAM_CHAT_ID`.
-3. **Initialize Bot:** Search for your new bot's `@username` on Telegram and tap **Start** (required once so Telegram allows your bot to text you).
-
----
-
-## 🧪 Running Scans
-
-### Run Dry-Run (Console Preview Only)
-```bash
-uv run python buy_on_dip_notifier.py --dry-run
-```
-
-### Run Live Scan & Send Telegram Alert
-```bash
-uv run python buy_on_dip_notifier.py
-```
-
-### Run Report for ALL Watchlist Stocks (Ignore Dip Filter)
-```bash
-uv run python buy_on_dip_notifier.py --all-stocks
-```
+1. **Create Bot:** Open Telegram, search for `@BotFather`, send `/newbot`, and copy `TELEGRAM_BOT_TOKEN`.
+2. **Get Chat ID:** Search for `@userinfobot` on Telegram, tap **Start**, and copy `TELEGRAM_CHAT_ID`.
+3. **Initialize Bot:** Search for your bot's username on Telegram and click **Start**.
 
 ---
 
-## ☁️ 100% Free Cloud Automation (GitHub Actions)
+## 🧪 Terminal CLI Commands
 
-This repository includes a pre-configured GitHub Actions workflow (`.github/workflows/daily_scan.yml`).
-
-### Setup GitHub Secrets (1 Minute):
-1. Go to your repository on GitHub: `https://github.com/devanuragDE/tradingview-mcp`
-2. Click **Settings** → **Secrets and variables** → **Actions**.
-3. Click **New repository secret** and add:
-   - `TELEGRAM_BOT_TOKEN`: Your BotFather Token
-   - `TELEGRAM_CHAT_ID`: Your Chat ID
-
-### Manual Trigger via GitHub Web UI:
-1. Go to your repository on GitHub → Click **Actions** tab.
-2. Select **Daily Buy-on-Dip Stock Scanner** on the left menu.
-3. Click **Run workflow** → Click the green **Run workflow** button.
+| Action | Command |
+| :--- | :--- |
+| **Start Web Dashboard Server** | `uv run python api_server.py` |
+| **Run Dry-Run Scan (Terminal Preview)** | `uv run python buy_on_dip_notifier.py --dry-run` |
+| **Run Live Market Scan & Alert** | `uv run python buy_on_dip_notifier.py` |
+| **Force Scan for ALL Watchlist Stocks** | `uv run python buy_on_dip_notifier.py --all-stocks` |
 
 ---
 
-## 📝 Customizing Your Watchlist
+## 🔧 Troubleshooting Common Dashboard Issues
 
-Open `buy_on_dip_notifier.py` and edit the `DEFAULT_WATCHLIST` array:
+- **Port 8000 Already in Use (`Errno 48`)**:
+  If port 8000 is occupied by a previous process, free it with:
+  ```bash
+  kill -9 $(lsof -t -i:8000)
+  ```
+  Then restart the server:
+  ```bash
+  uv run python api_server.py
+  ```
 
-```python
-DEFAULT_WATCHLIST = [
-    {"symbol": "QQQ", "exchange": "NASDAQ", "screener": "america", "name": "Invesco QQQ Trust"},
-    {"symbol": "AAPL", "exchange": "NASDAQ", "screener": "america", "name": "Apple Inc."},
-    {"symbol": "NVDA", "exchange": "NASDAQ", "screener": "america", "name": "NVIDIA Corp."},
-    {"symbol": "TCS", "exchange": "NSE", "screener": "india", "name": "Tata Consultancy Services"},
-    {"symbol": "RELIANCE", "exchange": "NSE", "screener": "india", "name": "Reliance Industries"},
-]
-```
+- **Stop Server**: Press `CTRL + C` in the terminal running `api_server.py`.
 
 ---
 
