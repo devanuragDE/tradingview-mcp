@@ -12,7 +12,9 @@ import json
 import os
 import sys
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+IST = timezone(timedelta(hours=5, minutes=30))
 import time
 from pathlib import Path
 
@@ -366,7 +368,7 @@ def format_whatsapp_message(alert: dict) -> str:
         f"   Support: {'✅ At Support' if alert['at_support'] else '❌ No Support'}\n"
         f"   RSI: {alert['rsi']:.1f} ({'✅ Buy Zone' if alert['rsi_in_buy_zone'] else '❌ Outside'})\n"
         f"   Momentum: {'✅ Confirmed' if alert['momentum_confirm'] else '❌ Weak'}\n\n"
-        f"⏰ *Generated:* {datetime.now(timezone.utc).strftime('%d %b %Y %H:%M UTC')}"
+        f"⏰ *Generated:* {datetime.now(IST).strftime('%d %b %Y %H:%M IST')}"
     )
 
 
