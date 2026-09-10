@@ -103,16 +103,19 @@ def delete_watchlist(symbol: str):
 
 
 @app.get("/api/signals")
-def get_live_signals(all_stocks: bool = Query(False, description="Return analysis for all stocks, even non-dips")):
-    """Run real-time technical analysis and return Buy-on-Dip signals."""
+def get_live_signals(
+    all_stocks: bool = Query(False, description="Return analysis for all stocks, even non-dips"),
+    mode: str = Query("long_term", description="Strategy mode: 'long_term' (Value Accumulation DCA) or 'swing' (Daily Swing Trading)")
+):
+    """Run real-time technical & fundamental analysis and return Buy-on-Dip signals."""
     watchlist = database.get_all_watchlist_items()
     signals = []
 
     # Batch preload TradingView indicators for all watchlist items in 1 batch query
-    tv_batch = batch_fetch_tradingview(watchlist)
+    tv_batch = batch_fetch_tradingview(watchlist) if mode == "swing" else {}
 
     for item in watchlist:
-        res = analyze_stock(dict(item), preloaded_ind=tv_batch)
+        res = analyze_stock(dict(item), preloaded_ind=tv_batch, mode=mode)
         if "error" in res:
             continue
         
@@ -139,7 +142,6 @@ def get_live_signals(all_stocks: bool = Query(False, description="Return analysi
 
         if is_buy or all_stocks:
             signals.append(res)
-            # Log to DB
             try:
                 database.log_signal(res)
             except Exception:
@@ -147,6 +149,7 @@ def get_live_signals(all_stocks: bool = Query(False, description="Return analysi
 
     return {
         "status": "success",
+        "mode": mode,
         "total_scanned": len(watchlist),
         "signals_count": len(signals),
         "signals": signals,
@@ -160,12 +163,11 @@ def get_signal_history(limit: int = 50):
     return {"status": "success", "count": len(history), "history": history}
 
 
-def _run_scan_and_notify_task():
+def _run_scan_and_notify_task(mode: str = "long_term"):
     """Background worker task to run scan and dispatch notifications."""
     watchlist = database.get_all_watchlist_items()
-    tv_batch = batch_fetch_tradingview(watchlist)
     for item in watchlist:
-        res = analyze_stock(dict(item), preloaded_ind=tv_batch)
+        res = analyze_stock(dict(item), mode=mode)
         if "error" in res:
             continue
         if res.get("is_buy_on_dip") or res.get("is_buy_signal"):
@@ -175,10 +177,10 @@ def _run_scan_and_notify_task():
 
 
 @app.post("/api/scan", response_model=ScanResponse)
-def trigger_scan(background_tasks: BackgroundTasks):
+def trigger_scan(background_tasks: BackgroundTasks, mode: str = Query("long_term")):
     """Trigger an instant market scan & notify via Telegram/WhatsApp in background."""
     watchlist = database.get_all_watchlist_items()
-    background_tasks.add_task(_run_scan_and_notify_task)
+    background_tasks.add_task(_run_scan_and_notify_task, mode=mode)
     return ScanResponse(
         status="scan_triggered",
         scanned_count=len(watchlist),

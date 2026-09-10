@@ -43,14 +43,15 @@
       const [loading, setLoading] = useState(true);
       const [scanning, setScanning] = useState(false);
       const [activeTab, setActiveTab] = useState('dips');
+      const [mode, setMode] = useState('long_term'); // 'long_term' vs 'swing'
       const [showAddModal, setShowAddModal] = useState(false);
       const [newSymbol, setNewSymbol] = useState('');
       const [newCategory, setNewCategory] = useState('US Tech');
 
       useEffect(() => {
         fetchWatchlist();
-        fetchSignals();
-      }, []);
+        fetchSignals(mode);
+      }, [mode]);
 
       const fetchWatchlist = async () => {
         try {
@@ -62,10 +63,10 @@
         }
       };
 
-      const fetchSignals = async () => {
+      const fetchSignals = async (currentMode = mode) => {
         setLoading(true);
         try {
-          const res = await fetch('/api/signals?all_stocks=true');
+          const res = await fetch(`/api/signals?all_stocks=true&mode=${currentMode}`);
           const data = await res.json();
           const sigs = data.signals || [];
           setSignals(sigs);
@@ -83,9 +84,9 @@
       const triggerScan = async () => {
         setScanning(true);
         try {
-          await fetch('/api/scan', { method: 'POST' });
-          alert('⚡ Cloud scan & alert dispatch triggered successfully!');
-          fetchSignals();
+          await fetch(`/api/scan?mode=${mode}`, { method: 'POST' });
+          alert(`⚡ Cloud scan & alert dispatch triggered successfully in ${mode.toUpperCase()} mode!`);
+          fetchSignals(mode);
         } catch (err) {
           alert('Failed to trigger scan');
         } finally {
@@ -105,7 +106,7 @@
           setNewSymbol('');
           setShowAddModal(false);
           fetchWatchlist();
-          fetchSignals();
+          fetchSignals(mode);
         } catch (err) {
           alert('Failed to add stock');
         }
@@ -116,7 +117,7 @@
         try {
           await fetch(`/api/watchlist/${symbol}`, { method: 'DELETE' });
           fetchWatchlist();
-          fetchSignals();
+          fetchSignals(mode);
         } catch (err) {
           alert('Failed to delete stock');
         }
@@ -133,15 +134,31 @@
             <div>
               <div class="flex items-center gap-3">
                 <div class="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
-                  📈
+                  🏛️
                 </div>
                 <div>
                   <h1 class="text-2xl font-bold text-white tracking-tight">Buy-on-Dip Trading Cockpit</h1>
-                  <p class="text-sm text-gray-400">Multi-Market Technical Intelligence & Automated Telegram Alerts</p>
+                  <p class="text-sm text-gray-400">Multi-Market Value Accumulation & Multi-Tranche DCA Intelligence</p>
                 </div>
               </div>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 flex-wrap">
+              {/* Strategy Selector Toggle */}
+              <div class="flex bg-gray-900 p-1 rounded-xl border border-gray-700 text-xs">
+                <button
+                  onClick={() => setMode('long_term')}
+                  class={`px-3 py-1.5 rounded-lg font-bold transition ${mode === 'long_term' ? 'bg-emerald-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                >
+                  🏛️ Long-Term DCA
+                </button>
+                <button
+                  onClick={() => setMode('swing')}
+                  class={`px-3 py-1.5 rounded-lg font-bold transition ${mode === 'swing' ? 'bg-emerald-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                >
+                  ⚡ Daily Swing
+                </button>
+              </div>
+
               <button 
                 onClick={() => setShowAddModal(true)}
                 class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-medium border border-gray-700 transition flex items-center gap-2"
@@ -165,14 +182,13 @@
               <div class="text-3xl font-extrabold text-white">{watchlist.length} <span class="text-xs font-normal text-gray-400">Stocks/ETFs</span></div>
             </div>
             <div class="glass-card p-5 rounded-2xl border-emerald-500/30">
-              <div class="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-1">Active Buy-on-Dip Signals</div>
+              <div class="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-1">Active Accumulation Dips</div>
               <div class="text-3xl font-extrabold text-emerald-400">{dipSignals.length} <span class="text-xs font-normal text-gray-400">Opportunities</span></div>
             </div>
             <div class="glass-card p-5 rounded-2xl">
-              <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Market Coverage</div>
-              <div class="text-lg font-bold text-white flex items-center gap-2 mt-1">
-                <span>🇺🇸 US (NASDAQ/NYSE)</span>
-                <span>🇮🇳 India (NSE)</span>
+              <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Active Strategy Engine</div>
+              <div class="text-lg font-bold text-emerald-400 flex items-center gap-2 mt-1">
+                <span>{mode === 'long_term' ? '🏛️ Value DCA Accumulation' : '⚡ Daily Swing Trading'}</span>
               </div>
             </div>
             <div class="glass-card p-5 rounded-2xl">
@@ -200,7 +216,7 @@
                 📊 All Watchlist ({signals.length})
               </button>
             </div>
-            <button onClick={fetchSignals} class="text-sm text-gray-400 hover:text-white flex items-center gap-1">
+            <button onClick={() => fetchSignals(mode)} class="text-sm text-gray-400 hover:text-white flex items-center gap-1">
               🔄 Refresh Data
             </button>
           </div>
@@ -209,13 +225,13 @@
           {loading ? (
             <div class="text-center py-20 text-gray-500">
               <div class="text-4xl mb-3 animate-spin inline-block">⚙️</div>
-              <p>Evaluating Technical Indicators & Support Levels...</p>
+              <p>Evaluating Technical & Fundamental Valuation Metrics...</p>
             </div>
           ) : displayedSignals.length === 0 ? (
             <div class="text-center py-20 glass-card rounded-2xl border-dashed border-gray-800">
               <div class="text-5xl mb-3">🛡️</div>
               <h3 class="text-lg font-bold text-white mb-1">No Active Dips Detected</h3>
-              <p class="text-sm text-gray-400 max-w-md mx-auto">All tracked stocks are currently trading above support zones or near peaks. The system is waiting for market pullbacks.</p>
+              <p class="text-sm text-gray-400 max-w-md mx-auto">All tracked stocks are currently trading near valuation peaks. The system is waiting for market pullbacks.</p>
             </div>
           ) : (
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -231,6 +247,11 @@
                           <div class="flex items-center gap-2">
                             <span class="text-xl font-black text-white group-hover:text-emerald-400 transition">{item.symbol}</span>
                             <span class="text-xs font-bold px-2 py-0.5 bg-gray-800 text-gray-300 rounded-md border border-gray-700">{item.exchange}</span>
+                            {item.quality_label && (
+                              <span class="text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
+                                {item.quality_label}
+                              </span>
+                            )}
                           </div>
                           <div class="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{item.name}</div>
                         </div>
@@ -262,19 +283,34 @@
                           <div class="text-base font-bold text-white">{currency}{item.price.toLocaleString()}</div>
                         </div>
                         <div class="bg-gray-900/40 p-2.5 rounded-xl border border-gray-800">
-                          <div class="text-gray-400 mb-0.5">RSI (14)</div>
-                          <div class={`text-base font-bold ${item.rsi <= 48 ? 'text-emerald-400' : 'text-gray-300'}`}>{item.rsi.toFixed(1)}</div>
+                          <div class="text-gray-400 mb-0.5">{mode === 'long_term' ? 'Weekly RSI' : 'RSI (14)'}</div>
+                          <div class={`text-base font-bold ${(item.weekly_rsi || item.rsi) <= 48 ? 'text-emerald-400' : 'text-gray-300'}`}>
+                            {(item.weekly_rsi || item.rsi || 50).toFixed(1)}
+                          </div>
                         </div>
-                        <div class="bg-gray-900/40 p-2.5 rounded-xl border border-gray-800 col-span-2">
-                          <div class="text-gray-400 mb-0.5">Recommended Buy Zone</div>
-                          <div class="text-sm font-semibold text-emerald-400">{currency}{item.low_buy_zone.toFixed(2)} – {currency}{item.high_buy_zone.toFixed(2)}</div>
-                        </div>
+                        {mode === 'long_term' ? (
+                          <>
+                            <div class="bg-gray-900/40 p-2.5 rounded-xl border border-gray-800">
+                              <div class="text-gray-400 mb-0.5">52W Drawdown</div>
+                              <div class="text-sm font-bold text-emerald-400">-{item.pct_pullback || 0}%</div>
+                            </div>
+                            <div class="bg-gray-900/40 p-2.5 rounded-xl border border-gray-800">
+                              <div class="text-gray-400 mb-0.5">DCA Allocation</div>
+                              <div class="text-sm font-bold text-white">{item.tranche_allocation || 'N/A'}</div>
+                            </div>
+                          </>
+                        ) : (
+                          <div class="bg-gray-900/40 p-2.5 rounded-xl border border-gray-800 col-span-2">
+                            <div class="text-gray-400 mb-0.5">Recommended Buy Zone</div>
+                            <div class="text-sm font-semibold text-emerald-400">{currency}{(item.low_buy_zone || 0).toFixed(2)} – {currency}{(item.high_buy_zone || 0).toFixed(2)}</div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {/* Footer / Action Plan */}
                     <div class="pt-3 border-t border-gray-800 flex justify-between items-center text-xs">
-                      <div class="text-gray-400">Target: <span class="font-bold text-emerald-400">{currency}{item.resistance_r1.toFixed(2)}</span></div>
+                      <div class="text-gray-400">Target Peak: <span class="font-bold text-emerald-400">{currency}{(item.target1 || 0).toFixed(2)}</span></div>
                       <a 
                         href={`https://www.tradingview.com/chart/?symbol=${item.exchange}:${item.symbol}`} 
                         target="_blank" 

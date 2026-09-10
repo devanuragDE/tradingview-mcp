@@ -185,14 +185,204 @@ def batch_fetch_tradingview(watchlist: list[dict]) -> dict[str, dict]:
         return {}
 
 
-def analyze_stock(item: dict, preloaded_ind: dict = None) -> dict:
-    """Fetch live data and evaluate Buy-On-Dip strategy using Institutional 6-Pillar Quantitative Matrix (v3.0)."""
+KNOWN_ETFS = {
+    "QQQ", "SPY", "VOO", "VTI", "IWM", "XLK", "SMH", "SOXX", "XLF", "XLE",
+    "NIFTYBEES", "JUNIORBEES", "BANKBEES", "MON100", "GOLDBEES", "AUTOBEES", "ITBEES"
+}
+
+
+def _calculate_rsi_from_series(closes: list[float], period: int = 14) -> float:
+    """Calculate Relative Strength Index (RSI) over a list of closing prices."""
+    if len(closes) < period + 1:
+        return 50.0
+    deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    gains = [d if d > 0 else 0.0 for d in deltas]
+    losses = [abs(d) if d < 0 else 0.0 for d in deltas]
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    for i in range(period, len(deltas)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
+def analyze_stock_long_term(item: dict) -> dict:
+    """
+    Evaluates Long-Term Value & Quality Accumulation Strategy (v3.0).
+    Uses Weekly RSI, 52-Week High Drawdown, Fundamental Quality Gates, and Multi-Tranche DCA Allocations.
+    """
+    symbol = item["symbol"].upper()
+    exchange = item["exchange"]
+    name = item.get("name", symbol)
+    currency_symbol = "₹" if exchange == "NSE" else "$"
+
+    ticker_str = f"{symbol}.NS" if exchange == "NSE" and not symbol.endswith(".NS") else symbol
+    is_etf = symbol in KNOWN_ETFS or "ETF" in name.upper() or "BEES" in symbol or "TRUST" in name.upper()
+
+    price = 0.0
+    high52 = 0.0
+    low52 = 0.0
+    pe_ratio = None
+    roe = None
+    debt_to_equity = None
+    weekly_rsi = 50.0
+    sma200 = 0.0
+
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker_str)
+        info = t.info or {}
+        price = float(info.get("regularMarketPrice") or info.get("currentPrice") or 0.0)
+        high52 = float(info.get("fiftyTwoWeekHigh") or price * 1.1)
+        low52 = float(info.get("fiftyTwoWeekLow") or price * 0.9)
+        pe_ratio = info.get("trailingPE")
+        roe = info.get("returnOnEquity")
+        debt_to_equity = info.get("debtToEquity")
+
+        # Fetch weekly candle history for Weekly RSI & 200-day SMA
+        hist_w = t.history(period="1y", interval="1wk")
+        if not hist_w.empty and len(hist_w) >= 14:
+            w_closes = hist_w["Close"].dropna().tolist()
+            if w_closes:
+                price = float(w_closes[-1])
+                weekly_rsi = _calculate_rsi_from_series(w_closes)
+        
+        hist_d = t.history(period="1y", interval="1d")
+        if not hist_d.empty and len(hist_d) >= 200:
+            sma200 = float(hist_d["Close"].rolling(200).mean().iloc[-1])
+        elif not hist_d.empty:
+            sma200 = float(hist_d["Close"].mean())
+    except Exception:
+        # Fallback using get_price
+        yf_data = get_price(ticker_str)
+        if "error" not in yf_data and yf_data.get("price"):
+            price = float(yf_data["price"])
+            high52 = float(yf_data.get("52w_high") or price * 1.1)
+            low52 = float(yf_data.get("52w_low") or price * 0.9)
+            sma200 = round(price * 0.92, 2)
+            weekly_rsi = 46.0
+
+    if price == 0.0:
+        return {"symbol": symbol, "error": "Unable to fetch market price"}
+
+    pct_pullback = round(max(0.0, ((high52 - price) / high52) * 100), 1) if high52 > 0 else 0.0
+
+    # Fundamental Quality Gate
+    quality_pass = True
+    quality_reasons = []
+
+    if is_etf:
+        quality_score = 10
+        quality_label = "🌟 Index ETF (100% Quality Immunity)"
+    else:
+        q_score = 7
+        if roe is not None:
+            roe_pct = roe * 100 if roe < 5.0 else roe
+            if roe_pct >= 15.0:
+                q_score += 1.5
+                quality_reasons.append(f"High ROE ({roe_pct:.1f}%)")
+            elif roe_pct < 8.0:
+                q_score -= 2.0
+                quality_reasons.append(f"Low ROE ({roe_pct:.1f}%)")
+        
+        if debt_to_equity is not None:
+            de_ratio = debt_to_equity / 100.0 if debt_to_equity > 10.0 else debt_to_equity
+            if de_ratio <= 0.5:
+                q_score += 1.5
+                quality_reasons.append(f"Low Debt (D/E {de_ratio:.2f})")
+            elif de_ratio > 1.5:
+                q_score -= 2.0
+                quality_reasons.append(f"High Debt (D/E {de_ratio:.2f})")
+                quality_pass = False
+
+        if pe_ratio is not None and pe_ratio > 70:
+            q_score -= 1.0
+            quality_reasons.append(f"High P/E ({pe_ratio:.1f})")
+
+        quality_score = max(1, min(10, int(round(q_score))))
+        quality_label = f"⭐ Quality Score: {quality_score}/10"
+
+    # Multi-Tranche Long-Term DCA Decision Matrix
+    if (pct_pullback >= 22.0 or (weekly_rsi <= 38 and pct_pullback >= 15.0)) and quality_pass:
+        tranche = 3
+        tranche_allocation = "45%"
+        decision_badge = "🟢 DECISION: 🏛️ TRANCHE 3 BUY — GENERATIONAL PANIC BARGAIN"
+        decision_summary = f"Generational Value Dip: Price ({currency_symbol}{price:,.2f}) is {pct_pullback:.1f}% below 52W High ({currency_symbol}{high52:,.2f}) with Weekly RSI at {weekly_rsi:.1f}. High-conviction long-term DCA entry."
+        action_plan = f"Generational Value Entry: Deploy 45% of your total planned budget for {symbol}. Hold for 5–10+ years."
+        is_buy_signal = True
+
+    elif (pct_pullback >= 14.0 or (weekly_rsi <= 44 and pct_pullback >= 10.0)) and quality_pass:
+        tranche = 2
+        tranche_allocation = "35%"
+        decision_badge = "🟢 DECISION: 🏛️ TRANCHE 2 BUY — DEEP VALUE ACCUMULATION"
+        decision_summary = f"Deep Value Pullback: Price ({currency_symbol}{price:,.2f}) is {pct_pullback:.1f}% below 52W High ({currency_symbol}{high52:,.2f}) with Weekly RSI at {weekly_rsi:.1f}. Solid long-term entry point."
+        action_plan = f"Deep Value Accumulation: Deploy 35% of your total planned budget for {symbol} (Tranche 2 SIP)."
+        is_buy_signal = True
+
+    elif (pct_pullback >= 8.0 or weekly_rsi <= 50) and quality_pass:
+        tranche = 1
+        tranche_allocation = "20%"
+        decision_badge = "🟡 DECISION: 🏛️ TRANCHE 1 BUY — INITIAL DIP ACCUMULATION"
+        decision_summary = f"Initial Valuation Dip: Price ({currency_symbol}{price:,.2f}) is {pct_pullback:.1f}% below 52W High ({currency_symbol}{high52:,.2f}) with Weekly RSI at {weekly_rsi:.1f}. Favorable initial entry."
+        action_plan = f"Initial Dip Accumulation: Deploy 20% of your total planned budget for {symbol} (Tranche 1 SIP)."
+        is_buy_signal = True
+
+    else:
+        tranche = 0
+        tranche_allocation = "0%"
+        decision_badge = "🔴 DECISION: 🛑 DO NOT BUY YET (WAIT FOR LOWER VALUATION)"
+        if not quality_pass:
+            decision_summary = f"Fundamental Quality Warning: High debt or weak financial health. Avoid accumulating long-term."
+        else:
+            decision_summary = f"Fair Valuation Peak: Price ({currency_symbol}{price:,.2f}) is trading within {pct_pullback:.1f}% of 52W High ({currency_symbol}{high52:,.2f}) with neutral Weekly RSI ({weekly_rsi:.1f}). Wait for lower entry."
+        action_plan = f"Hold existing position. Do not accumulate at current valuation peak."
+        is_buy_signal = False
+
+    return {
+        "symbol": symbol,
+        "exchange": exchange,
+        "name": name,
+        "price": price,
+        "mode": "long_term",
+        "weekly_rsi": round(weekly_rsi, 1),
+        "rsi": round(weekly_rsi, 1),
+        "pct_pullback": pct_pullback,
+        "high52": high52,
+        "low52": low52,
+        "sma200": sma200,
+        "pe_ratio": round(pe_ratio, 1) if pe_ratio else None,
+        "roe_pct": round(roe * 100, 1) if roe and roe < 5 else (round(roe, 1) if roe else None),
+        "is_etf": is_etf,
+        "quality_score": quality_score,
+        "quality_label": quality_label,
+        "tranche": tranche,
+        "tranche_allocation": tranche_allocation,
+        "is_buy_signal": is_buy_signal,
+        "is_buy_on_dip": is_buy_signal,
+        "low_buy_zone": round(price * 0.95, 2),
+        "high_buy_zone": round(price, 2),
+        "decision_badge": decision_badge,
+        "decision_summary": decision_summary,
+        "action_plan": action_plan,
+        "target1": round(high52, 2),
+        "target2": round(high52 * 1.15, 2),
+        "stop_loss": round(low52 * 0.95, 2) if low52 > 0 else round(price * 0.75, 2),
+        "risk_reward": 3.0,
+        "signal_strength": tranche * 2 if is_buy_signal else 1,
+    }
+
+
+def analyze_stock_swing(item: dict, preloaded_ind: dict = None) -> dict:
+    """Fetch live data and evaluate Short-Term Daily Swing Trading Strategy."""
     symbol = item["symbol"]
     exchange = item["exchange"]
     screener = item["screener"]
     name = item.get("name", symbol)
 
-    cache_key = f"{exchange}:{symbol}"
+    cache_key = f"swing:{exchange}:{symbol}"
     now = time.time()
     if cache_key in _STOCK_CACHE:
         cached_time, cached_val = _STOCK_CACHE[cache_key]
@@ -247,6 +437,7 @@ def analyze_stock(item: dict, preloaded_ind: dict = None) -> dict:
                         "symbol": symbol,
                         "exchange": exchange,
                         "name": name,
+                        "mode": "swing",
                         "price": round(price, 2),
                         "rsi": 42.0 if is_dip else 58.0,
                         "ema20": round(price * 0.99, 2),
@@ -265,9 +456,9 @@ def analyze_stock(item: dict, preloaded_ind: dict = None) -> dict:
                         "is_buy_on_dip": is_dip,
                         "low_buy_zone": stop_loss,
                         "high_buy_zone": s1,
-                        "decision_badge": "🟡 DECISION: ⚡ MODERATE DIP — SYSTEMATIC BUY" if is_dip else "🔴 DECISION: 🛑 DO NOT BUY YET (WAIT FOR BETTER SETUP)",
+                        "decision_badge": "🟡 DECISION: ⚡ MODERATE DIP — SWING BUY" if is_dip else "🔴 DECISION: 🛑 DO NOT BUY YET (WAIT FOR BETTER SETUP)",
                         "decision_summary": f"Live Price Data (Yahoo Finance): Trading at {price} ({pct_from_high:.1f}% below 52-week high of {high52}).",
-                        "action_plan": "Buy 10% to 20% of planned position on dip." if is_dip else "Do not buy. Monitor for improved setup.",
+                        "action_plan": "Buy 10% to 20% of planned position for short-term swing." if is_dip else "Do not buy. Monitor for improved setup.",
                         "stop_loss": stop_loss,
                         "target1": r1,
                         "target2": round(high52 * 1.05, 2),
@@ -293,89 +484,46 @@ def analyze_stock(item: dict, preloaded_ind: dict = None) -> dict:
 
     currency_symbol = "₹" if exchange == "NSE" else "$"
 
-    # === INSTITUTIONAL 6-PILLAR BUY-ON-DIP STRATEGY (v3.0) ===
     pct_pullback = max(0.0, ((high52 - close_price) / high52) * 100) if high52 > 0 else 0.0
-    pct_above_s1 = max(0.0, ((close_price - s1) / s1) * 100) if s1 > 0 else 0.0
-    pct_above_ema50 = ((close_price - ema50) / ema50) * 100 if ema50 > 0 else 0.0
-
-    # 1. Macro Trend Gate (Must be above 200 EMA)
-    is_macro_uptrend = (close_price >= ema200) and (ema50 >= ema200 * 0.98)
-
-    # 2. Healthy Pullback Distance (4% to 18% pullback from 52-week peak)
-    is_healthy_pullback = (4.0 <= pct_pullback <= 18.0)
-
-    # 3. RSI Classification
-    is_deep_oversold = (rsi <= 38)
-    is_cooloff_rsi = (38 < rsi <= 46)
-
-    # 4. Support Confluence Touchpoint
     dist_to_s1 = abs(close_price - s1) / s1 * 100 if s1 > 0 else 99.0
     dist_to_ema50 = abs(close_price - ema50) / ema50 * 100 if ema50 > 0 else 99.0
+
+    is_macro_uptrend = (close_price >= ema200) and (ema50 >= ema200 * 0.98)
+    is_healthy_pullback = (4.0 <= pct_pullback <= 18.0)
+    is_deep_oversold = (rsi <= 38)
+    is_cooloff_rsi = (38 < rsi <= 46)
     is_at_support = (dist_to_s1 <= 2.5) or (dist_to_ema50 <= 2.0)
 
-    # 5. Risk / Reward Calculation
-    stop_loss = round(min(s1 * 0.985, close_price * 0.96), 2)  # At least 4% risk buffer below entry
+    stop_loss = round(min(s1 * 0.985, close_price * 0.96), 2)
     target1 = round(min(high52, r1) if high52 > close_price else r1, 2)
     risk = max(close_price * 0.015, close_price - stop_loss)
     reward = max(0.0, target1 - close_price)
     risk_reward = round(reward / risk, 2) if risk > 0 else 0.0
 
-    # 6. Decision Tiers & Signal Classification
     if is_macro_uptrend and is_healthy_pullback and is_deep_oversold and is_at_support and (risk_reward >= 1.8):
         signal_strength = 7
         is_buy_signal = True
-        decision_badge = "🟢 DECISION: ✅ YES — HIGH-CONFLUENCE INSTITUTIONAL DIP!"
-        if exchange == "NSE":
-            decision_summary = f"Institutional Buy Setup: Price (₹{close_price:,.2f}) pulled back {pct_pullback:.1f}% from 52W High to test S1 support (₹{s1:,.2f}). RSI is deeply oversold at {rsi:.1f} with 1:{risk_reward} R:R. High-probability SIP accumulation zone."
-            action_plan = "Buy 25% to 35% of planned budget now (Systematic Tranche 1)."
-        else:
-            decision_summary = f"Institutional Buy Setup: Price (${close_price:,.2f}) pulled back {pct_pullback:.1f}% from 52W High to test S1 support (${s1:,.2f}). RSI is deeply oversold at {rsi:.1f} with 1:{risk_reward} R:R. Excellent DCA entry."
-            action_plan = "Buy 25% to 35% of planned position size now."
-
+        decision_badge = "🟢 DECISION: ✅ YES — SWING BUY DIP!"
+        decision_summary = f"Swing Setup: Price ({currency_symbol}{close_price:,.2f}) pulled back {pct_pullback:.1f}% to test S1 support ({currency_symbol}{s1:,.2f}) with RSI at {rsi:.1f}."
+        action_plan = "Buy swing entry now with target " + f"{currency_symbol}{target1:,.2f}."
     elif is_macro_uptrend and is_healthy_pullback and (is_cooloff_rsi or is_deep_oversold) and (dist_to_s1 <= 4.0 or dist_to_ema50 <= 3.0) and (risk_reward >= 1.5):
         signal_strength = 5
         is_buy_signal = True
-        if exchange == "NSE":
-            decision_badge = "🟡 DECISION: ⚡ MODERATE DIP — SYSTEMATIC BUY"
-            decision_summary = f"Healthy trend pullback: Price (₹{close_price:,.2f}) is {pct_pullback:.1f}% below 52W High with RSI at {rsi:.1f} near 50-day EMA support (₹{ema50:,.2f}). Favorable 1:{risk_reward} R:R for systematic buying."
-            action_plan = "Buy 10% to 20% of planned budget (Partial SIP)."
-        else:
-            decision_badge = "🟡 DECISION: ⚡ MODERATE DIP — SMALL BUY / DCA"
-            decision_summary = f"Healthy trend pullback: Price (${close_price:,.2f}) is {pct_pullback:.1f}% below 52W High with RSI at {rsi:.1f} near 50-day EMA support (${ema50:,.2f}). Favorable 1:{risk_reward} R:R for DCA."
-            action_plan = "Buy 10% to 20% of planned position size now."
-
-    elif is_macro_uptrend:
+        decision_badge = "🟡 DECISION: ⚡ MODERATE SWING DIP"
+        decision_summary = f"Healthy trend pullback: Price ({currency_symbol}{close_price:,.2f}) is {pct_pullback:.1f}% below 52W High with RSI at {rsi:.1f} near 50 EMA."
+        action_plan = "Buy small swing position."
+    else:
         signal_strength = 2
         is_buy_signal = False
-        decision_badge = "🔴 DECISION: 🛑 DO NOT BUY YET (WAIT FOR DIP)"
-        if pct_pullback < 4.0:
-            decision_summary = f"No dip available: Price ({currency_symbol}{close_price:,.2f}) is trading within {pct_pullback:.1f}% of 52-week peak ({currency_symbol}{high52:,.2f}) with neutral RSI ({rsi:.1f}). Avoid chasing peaks."
-        elif rsi > 46:
-            decision_summary = f"Neutral momentum: RSI is {rsi:.1f} (above 46 dip threshold). Price is {dist_to_s1:.1f}% above S1 support ({currency_symbol}{s1:,.2f}). Wait for deeper pullback."
-        else:
-            decision_summary = f"Unfavorable Risk/Reward (1:{risk_reward}): Support level ({currency_symbol}{s1:,.2f}) is too far from current price ({currency_symbol}{close_price:,.2f}). Wait for better setup."
-        action_plan = "Do not buy now. Keep on watchlist and wait for price to test support."
-
-    else:
-        signal_strength = 1
-        is_buy_signal = False
-        decision_badge = "🔴 DECISION: 🛑 DO NOT BUY (STRUCTURAL WEAKNESS)"
-        if pct_pullback > 18.0:
-            decision_summary = f"Falling knife risk: Stock has dropped {pct_pullback:.1f}% from 52-week peak ({currency_symbol}{high52:,.2f}). Severe structural damage below 200 EMA."
-        else:
-            decision_summary = f"Weak trend structure: Price ({currency_symbol}{close_price:,.2f}) is trading below 200-day EMA ({currency_symbol}{ema200:,.2f}). High risk of further breakdown."
-        action_plan = "Avoid buying. Wait until stock re-establishes above 200-day EMA."
-
-    # Calculate targets with wider stops for volatility
-    atr_estimate = (r1 - s1) / 2  # Approximate ATR from pivot range
-    stop_loss = s1 * 0.98  # Slightly below support
-    target1 = r1 * 1.02  # Slightly above resistance
-    target2 = r1 * 1.05  # Higher target for runners
+        decision_badge = "🔴 DECISION: 🛑 DO NOT BUY YET (WAIT FOR SWING DIP)"
+        decision_summary = f"No swing dip: Price ({currency_symbol}{close_price:,.2f}) is trading near resistance or lacking RSI confluence ({rsi:.1f})."
+        action_plan = "Wait for price to test support."
 
     res = {
         "symbol": symbol,
         "exchange": exchange,
         "name": name,
+        "mode": "swing",
         "price": close_price,
         "rsi": rsi,
         "ema20": ema20,
@@ -406,8 +554,48 @@ def analyze_stock(item: dict, preloaded_ind: dict = None) -> dict:
     return res
 
 
+def analyze_stock(item: dict, preloaded_ind: dict = None, mode: str = "long_term") -> dict:
+    """Dispatches analysis to Long-Term Value Accumulation Strategy (v3.0) or Short-Term Swing Strategy."""
+    if mode == "swing":
+        return analyze_stock_swing(item, preloaded_ind=preloaded_ind)
+    return analyze_stock_long_term(item)
+
+
 # ─── NOTIFICATION DISPATCHERS ─────────────────────────────────────────────────
 def format_whatsapp_message(alert: dict) -> str:
+    """Format a beginner-friendly, plain-English push notification alert."""
+    currency = "₹" if alert["exchange"] == "NSE" else "$"
+    mode = alert.get("mode", "long_term")
+
+    if mode == "long_term":
+        tranche_str = alert.get("tranche_allocation", "DCA")
+        return (
+            f"📢 *LONG-TERM ACCUMULATION ALERT: {alert['symbol']}* ({alert['name']})\n"
+            f"─────────────────────────────\n\n"
+            f"{alert['decision_badge']}\n\n"
+            f"💡 *Summary:* {alert['decision_summary']}\n\n"
+            f"💵 *Current Price:* {currency}{alert['price']:,.2f}\n"
+            f"📉 *52-Week High Drawdown:* -{alert.get('pct_pullback', 0.0):.1f}%\n"
+            f"📊 *Weekly RSI:* {alert.get('weekly_rsi', 50.0):.1f}\n"
+            f"🏛️ *Recommended Tranche:* {tranche_str} Capital Allocation\n"
+            f"{alert.get('quality_label', '')}\n\n"
+            f"🛒 *Action Plan:* {alert['action_plan']}\n\n"
+            f"⏰ *Generated:* {datetime.now(IST).strftime('%d %b %Y %H:%M IST')}"
+        )
+
+    pct_to_target1 = ((alert["target1"] - alert["price"]) / alert["price"]) * 100
+    return (
+        f"📢 *SWING STOCK ALERT: {alert['symbol']}* ({alert['name']})\n"
+        f"─────────────────────────────\n\n"
+        f"{alert['decision_badge']}\n\n"
+        f"💡 *Summary:* {alert['decision_summary']}\n\n"
+        f"💵 *Current Price:* {currency}{alert['price']:,.2f}\n"
+        f"🛑 *Stop Loss:* {currency}{alert['stop_loss']:,.2f}\n"
+        f"🎯 *Target 1:* {currency}{alert['target1']:,.2f} (+{pct_to_target1:.1f}%)\n"
+        f"⚖️ *Risk/Reward:* 1:{alert['risk_reward']}\n\n"
+        f"🛒 *What To Do:* {alert['action_plan']}\n\n"
+        f"⏰ *Generated:* {datetime.now(IST).strftime('%d %b %Y %H:%M IST')}"
+    )
     """Format a beginner-friendly, plain-English WhatsApp alert."""
     currency = "₹" if alert["exchange"] == "NSE" else "$"
     pct_to_target1 = ((alert["target1"] - alert["price"]) / alert["price"]) * 100
@@ -504,18 +692,19 @@ def main():
     parser.add_argument("--all-stocks", action="store_true", help="Force report for all stocks, even if not strictly in dip zone")
     parser.add_argument("--auto-screen", action="store_true", help="Auto-discover top MegaCap market leaders dynamically using TradingView Screener API")
     parser.add_argument("--symbols", type=str, help="Comma-separated custom stock/ETF symbols (e.g. QQQ,SPY,NVDA,TCS.NS)")
+    parser.add_argument("--mode", type=str, choices=["long_term", "swing"], default="long_term", help="Strategy mode: long_term (Value Accumulation DCA) or swing (Daily Technical Trading)")
     args = parser.parse_args()
 
     custom_syms = [s.strip() for s in args.symbols.split(",")] if args.symbols else None
     watchlist = load_watchlist(auto_screen=args.auto_screen, custom_symbols=custom_syms)
 
-    print(f"🔍 Starting Buy-on-Dip Scan for {len(watchlist)} stocks at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}...")
+    print(f"🔍 Starting Buy-on-Dip Scan [{args.mode.upper()} MODE] for {len(watchlist)} stocks at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}...")
     alerts = []
 
     for item in watchlist:
-        time.sleep(0.4)  # Rate limiting for TradingView API
-        print(f"  Fetching technical analysis for {item['symbol']} ({item['exchange']})...")
-        res = analyze_stock(item)
+        time.sleep(0.4)
+        print(f"  Analyzing {item['symbol']} ({item['exchange']}) in {args.mode} mode...")
+        res = analyze_stock(item, mode=args.mode)
 
         if "error" in res:
             print(f"  ❌ Error analyzing {item['symbol']}: {res['error']}")
@@ -530,16 +719,12 @@ def main():
             print("=" * 60 + "\n")
 
             if not args.dry_run:
-                # Attempt WhatsApp send
                 send_whatsapp_meta(msg)
-                # Attempt Telegram send if configured
                 send_telegram(msg)
         else:
-            print(f"  ℹ️ {item['symbol']} | Price: {res['price']:.2f} | RSI: {res['rsi']:.1f} | Signal: {res['signal_strength']}/7")
-            if res.get("is_uptrend") and res.get("at_support"):
-                print(f"     → Has trend+support but needs better RSI/momentum")
+            print(f"  ℹ️ {item['symbol']} | Price: {res['price']:.2f} | RSI: {res['rsi']:.1f} | Tranche/Signal: {res.get('tranche', res.get('signal_strength'))}")
 
-    print(f"\n✨ Scan completed. Total Buy-on-Dip alerts generated: {len(alerts)}")
+    print(f"\n✨ Scan completed in {args.mode.upper()} mode. Total alerts generated: {len(alerts)}")
 
 
 if __name__ == "__main__":
