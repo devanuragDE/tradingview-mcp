@@ -183,3 +183,18 @@ class TestExistingExchangesUnchanged:
     @pytest.mark.parametrize("exchange", ["kucoin", "binance", "bybit", "mexc"])
     def test_crypto_not_in_stock_exchanges(self, exchange):
         assert exchange not in STOCK_EXCHANGES
+
+
+# ── Tata Motors Demerger Aliases ──────────────────────────────────────────────
+
+class TestTataMotorsDemergerAliases:
+    """Tata Motors demerger aliases should resolve to TMPV (Passenger Vehicles)."""
+
+    @pytest.mark.parametrize("raw", ["TATAMOTORS", "TATAMOTORS.NS", "NSE:TATAMOTORS"])
+    def test_tatamotors_aliases_resolve_to_yahoo_tmpv(self, raw):
+        assert normalize_yahoo_symbol(raw) == "TMPV.NS"
+
+    @pytest.mark.parametrize("raw", ["TATAMOTORS", "TATAMOTORS.NS", "NSE:TATAMOTORS"])
+    def test_tatamotors_aliases_resolve_to_tradingview_tmpv(self, raw):
+        assert normalize_tradingview_symbol(raw, "nse") == "NSE:TMPV"
+

@@ -119,6 +119,9 @@ _YAHOO_SYMBOL_ALIASES: dict = {
     "^TWII": "^TWII",
     "TWSE:TAIEX": "^TWII",
     "TWSE:IX0001": "^TWII",
+    "TATAMOTORS": "TMPV.NS",
+    "TATAMOTORS.NS": "TMPV.NS",
+    "NSE:TATAMOTORS": "TMPV.NS",
 }
 
 _TRADINGVIEW_SYMBOL_ALIASES: dict = {
@@ -128,6 +131,9 @@ _TRADINGVIEW_SYMBOL_ALIASES: dict = {
     "IX0001": "TWSE:IX0001",
     "TWSE:TAIEX": "TWSE:IX0001",
     "TWSE:IX0001": "TWSE:IX0001",
+    "TATAMOTORS": "NSE:TMPV",
+    "TATAMOTORS.NS": "NSE:TMPV",
+    "NSE:TATAMOTORS": "NSE:TMPV",
     # Spot metals in forex-pair notation — unambiguous (no venue lists a stock or
     # token called "XAUUSD"/"XAGUSD"), so these always map to the TVC CFD feed.
     "XAUUSD": "TVC:GOLD",

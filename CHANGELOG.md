@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-10
+
+### Added
+- **Corporate Demerger & Symbol Normalization**: Added automatic ticker alias resolution in `validators.py` for corporate demergers and re-labelings (e.g. `TATAMOTORS`, `TATAMOTORS.NS`, `NSE:TATAMOTORS` seamlessly resolve to `TMPV.NS` / `NSE:TMPV` without HTTP 404 errors).
+- **Post-Demerger Watchlist Support**: Updated `watchlist.txt` and default seed watchlists with `TMPV.NS` (Tata Motors Passenger Vehicles Ltd) and `TMCV.NS` (Tata Motors Commercial Vehicles Ltd).
+- **SQLite Database Auto-Migration**: `database.init_db()` auto-detects and migrates existing SQLite (`trading_platform.db`) records, replacing delisted `TATAMOTORS` entries with `TMPV` and `TMCV`.
+- **Dual Strategy Engine**:
+  - `long_term` (Value Accumulation DCA): 52-week drawdown, weekly RSI, fundamental quality score gates (ROE, Debt/Equity, P/E), and 3-tranche DCA allocation.
+  - `swing` (Daily Technical Trading): EMA 20/50/200, MACD momentum, S1/R1 pivot levels, and risk-reward calculation.
+- **Dual-Channel Push Notifications**: Integrated Meta WhatsApp Cloud API (`send_whatsapp_meta`) alongside Telegram Bot API (`send_telegram`).
+- **Unit Test Suite**: Added `TestTataMotorsDemergerAliases` in `test_exchange_aliases.py`.
+
 ## [0.9.0] - 2026-08-26
 
 ### Changed (behavior)

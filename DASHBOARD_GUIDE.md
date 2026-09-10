@@ -58,18 +58,19 @@ Open Chrome, Safari, Firefox, or Edge and go to:
 
 ### 1. View Stock Cards & Technical Data
 - **🎯 Active Dips Tab:** Displays stocks currently sitting in prime buy-on-dip support zones.
-- **📊 All Watchlist Tab:** View real-time technical analysis, RSI (14), stop loss, target price, and action plan for all 34+ tracked stocks.
+- **📊 All Watchlist Tab:** View real-time technical analysis, RSI (14), stop loss, target price, and action plan for all 36 tracked stocks.
 
 ### 2. Add New Ticker / Stock
 1. Click the **`➕ Add Stock`** button in the header bar.
 2. Enter the ticker symbol:
    - For **US Stocks & ETFs**: `QQQ`, `SPY`, `NVDA`, `AAPL`, `TSLA`, `MSFT`
-   - For **Indian Stocks (NSE)**: Add `.NS` at the end (e.g. `TCS.NS`, `RELIANCE.NS`, `HDFCBANK.NS`, `INFY.NS`)
+   - For **Indian Stocks (NSE)**: Add `.NS` at the end (e.g. `TMPV.NS`, `TMCV.NS`, `TCS.NS`, `RELIANCE.NS`, `HDFCBANK.NS`, `INFY.NS`).
+   - *Note on Legacy Symbols:* If you type legacy tickers such as `TATAMOTORS`, the system automatically resolves the symbol to post-demerger ticker `TMPV` (Tata Motors Passenger Vehicles).
 3. Select Category and click **Add Ticker**.
 
-### 3. Send Instant Alerts to Telegram
+### 3. Send Instant Alerts to Telegram & WhatsApp
 Click the **`⚡ Trigger Cloud Scan`** button in the top right.
-The server evaluates all stocks in real-time and sends structured alert cards to your Telegram app.
+The server evaluates all stocks in real-time and sends structured alert cards to your Telegram app and Meta WhatsApp Cloud API.
 
 ---
 
@@ -81,6 +82,9 @@ The server evaluates all stocks in real-time and sends structured alert cards to
 kill -9 $(lsof -t -i:8000)
 ```
 Then run `uv run python api_server.py` again.
+
+#### Q: How are delisted or renamed tickers (like TATAMOTORS) handled?
+**Solution:** `database.py` automatically migrates SQLite database entries upon server startup (`init_db()`), replacing delisted tickers with post-demerger tickers (`TMPV` and `TMCV`). In addition, the symbol normalization service in `validators.py` redirects any API query for legacy tickers seamlessly.
 
 #### Q: How do I stop the server?
 **Solution:** In the terminal window running `api_server.py`, press `CTRL + C`.

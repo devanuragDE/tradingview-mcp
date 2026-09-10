@@ -65,6 +65,19 @@ def init_db() -> None:
             )
         """)
 
+        # 4. Migration for de-listed / renamed symbols (e.g. TATAMOTORS demerger)
+        cursor.execute("SELECT COUNT(*) FROM watchlists WHERE symbol = 'TATAMOTORS'")
+        if cursor.fetchone()[0] > 0:
+            cursor.execute("DELETE FROM watchlists WHERE symbol = 'TATAMOTORS'")
+            cursor.execute("""
+                INSERT OR IGNORE INTO watchlists (symbol, exchange, screener, name, category)
+                VALUES ('TMPV', 'NSE', 'india', 'Tata Motors Passenger Vehicles', 'India Auto')
+            """)
+            cursor.execute("""
+                INSERT OR IGNORE INTO watchlists (symbol, exchange, screener, name, category)
+                VALUES ('TMCV', 'NSE', 'india', 'Tata Motors Commercial Vehicles', 'India Auto')
+            """)
+
         conn.commit()
     seed_default_watchlist()
 
@@ -91,7 +104,8 @@ def seed_default_watchlist() -> None:
         ("TITAN", "NSE", "india", "Titan Company", "India Consumer"),
         ("BSOFT", "NSE", "india", "Birlasoft Ltd", "India IT"),
         ("DMART", "NSE", "india", "Avenue Supermarts (D-Mart)", "India Retail"),
-        ("TATAMOTORS", "NSE", "india", "Tata Motors Ltd", "India Auto"),
+        ("TMPV", "NSE", "india", "Tata Motors Passenger Vehicles", "India Auto"),
+        ("TMCV", "NSE", "india", "Tata Motors Commercial Vehicles", "India Auto"),
         ("BHARTIARTL", "NSE", "india", "Bharti Airtel", "India Telecom"),
         ("TATACHEM", "NSE", "india", "Tata Chemicals", "India Chemical"),
         ("VBL", "NSE", "india", "Varun Beverages", "India Consumer"),
@@ -135,7 +149,13 @@ def get_all_watchlist_items() -> list[dict]:
 def add_watchlist_item(symbol: str, exchange: str = "NASDAQ", screener: str = "america", name: str = "", category: str = "Custom") -> dict:
     """Add a new stock ticker to the database watchlist."""
     symbol = symbol.strip().upper()
-    if ".NS" in symbol or symbol.endswith("-IN"):
+    if symbol in ("TATAMOTORS", "TATAMOTORS.NS", "NSE:TATAMOTORS"):
+        symbol = "TMPV"
+        if not name or name == "TATAMOTORS":
+            name = "Tata Motors Passenger Vehicles"
+        exchange = "NSE"
+        screener = "india"
+    elif ".NS" in symbol or symbol.endswith("-IN"):
         symbol = symbol.replace(".NS", "").replace("-IN", "")
         exchange = "NSE"
         screener = "india"

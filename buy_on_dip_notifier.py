@@ -35,6 +35,7 @@ if env_path.exists():
 # Import tradingview-mcp services
 from tradingview_ta import TA_Handler, Interval
 from tradingview_mcp.core.services.yahoo_finance_service import get_price
+from tradingview_mcp.core.utils.validators import normalize_yahoo_symbol
 
 # ─── DEFAULT WATCHLIST ────────────────────────────────────────────────────────
 DEFAULT_WATCHLIST = [
@@ -68,7 +69,11 @@ def load_watchlist(auto_screen: bool = False, custom_symbols: list[str] = None) 
         sym = raw_sym.strip().upper()
         if ".NS" in sym or sym.endswith("-IN"):
             clean = sym.replace(".NS", "").replace("-IN", "")
+            if clean in ("TATAMOTORS", "NSE:TATAMOTORS"):
+                clean = "TMPV"
             return {"symbol": clean, "exchange": "NSE", "screener": "india", "name": clean}
+        if sym in ("TATAMOTORS", "NSE:TATAMOTORS"):
+            return {"symbol": "TMPV", "exchange": "NSE", "screener": "india", "name": "Tata Motors Passenger Vehicles"}
         ex = ETF_EXCHANGES.get(sym, "NASDAQ")
         return {"symbol": sym, "exchange": ex, "screener": "america", "name": sym}
 
@@ -219,7 +224,8 @@ def analyze_stock_long_term(item: dict) -> dict:
     name = item.get("name", symbol)
     currency_symbol = "₹" if exchange == "NSE" else "$"
 
-    ticker_str = f"{symbol}.NS" if exchange == "NSE" and not symbol.endswith(".NS") else symbol
+    raw_ticker = f"{symbol}.NS" if exchange == "NSE" and not symbol.endswith(".NS") else symbol
+    ticker_str = normalize_yahoo_symbol(raw_ticker)
     is_etf = symbol in KNOWN_ETFS or "ETF" in name.upper() or "BEES" in symbol or "TRUST" in name.upper()
 
     price = 0.0
@@ -418,7 +424,8 @@ def analyze_stock_swing(item: dict, preloaded_ind: dict = None) -> dict:
             ind = analysis.indicators
         except Exception as e:
             # Fallback to Yahoo Finance service on TradingView 429 rate limit / errors
-            ticker = f"{symbol}.NS" if exchange == "NSE" and not symbol.endswith(".NS") else symbol
+            raw_ticker = f"{symbol}.NS" if exchange == "NSE" and not symbol.endswith(".NS") else symbol
+            ticker = normalize_yahoo_symbol(raw_ticker)
             try:
                 yf_data = get_price(ticker)
                 if "error" not in yf_data and "price" in yf_data and yf_data["price"]:

@@ -1,6 +1,6 @@
 # 📈 100% Free Automated Buy-On-Dip Trading Platform & Web Cockpit v2.0
 
-An intelligent, automated stock scanner, web dashboard cockpit, and push-notification system powered by `tradingview-mcp` technical analysis and **GitHub Actions Cloud Runner**. It monitors watchlist stocks across **US and Indian markets**, filters for high-probability accumulation dips, and delivers **plain-English decision alerts** directly to your **Telegram** app and **Web Dashboard**.
+An intelligent, automated stock scanner, web dashboard cockpit, and push-notification system powered by `tradingview-mcp` technical analysis and **GitHub Actions Cloud Runner**. It monitors watchlist stocks across **US and Indian markets**, filters for high-probability accumulation dips, handles corporate ticker demergers/re-labeling seamlessly, and delivers **plain-English decision alerts** directly to your **WhatsApp**, **Telegram**, and **Web Dashboard**.
 
 ---
 
@@ -31,42 +31,40 @@ Click or open this URL in your web browser:
 
 ---
 
-## 🌟 Key Dashboard Features
+## 🌟 Key Dashboard & Engine Features
 
-- 🎯 **Active Buy-on-Dip Cards:** View real-time price, RSI (14), recommended buy zone range, 52-week targets, and action plans.
-- ➕ **Add Stock / ETF Ticker:** Click `➕ Add Stock` in the top bar to track any US stock (`NVDA`, `AAPL`, `QQQ`) or Indian stock (`TCS.NS`, `INFY.NS`, `RELIANCE.NS`).
-- ⚡ **Instant Cloud Scan & Telegram Alert:** Click `⚡ Trigger Cloud Scan` to evaluate all tickers live and dispatch notifications directly to your Telegram chat.
-- 📊 **Dual Market Coverage:** Pre-seeded with 34 top US MegaCaps/ETFs and Indian Bluechip leaders.
-- 🛡️ **15-Minute Intelligent Caching & Fallback:** Prevents API rate limits by caching data and seamlessly falling back to Yahoo Finance data when needed.
+- 🎯 **Active Buy-on-Dip Cards:** View real-time price, RSI, recommended buy zone range, 52-week drawdown, and multi-tranche action plans.
+- 🏛️ **Dual Strategy Engine:** 
+  - **Long-Term DCA Mode (`long_term`):** Evaluates 52-week high drawdown, Weekly RSI, Fundamental Quality Gates (ROE, Debt/Equity, P/E), and 3-Tranche SIP capital allocations (Tranche 1: 20%, Tranche 2: 35%, Tranche 3: 45%).
+  - **Short-Term Swing Mode (`swing`):** Evaluates daily trend confluence, EMA 20/50/200, MACD momentum, and S1/R1 pivot levels.
+- 🔄 **Corporate Demerger & Symbol Normalization:** Automatically resolves renamed or de-listed corporate tickers (e.g. `TATAMOTORS` / `TATAMOTORS.NS` seamlessly maps to post-demerger tickers `TMPV` (Passenger Vehicles) and `TMCV` (Commercial Vehicles) without 404 errors).
+- 💾 **SQLite DB Auto-Migration:** Database initialization (`init_db()`) auto-detects and migrates legacy Watchlist records in SQLite (`trading_platform.db`).
+- 📲 **Multi-Channel Push Alerts:** Sends formatted, plain-English push notification cards to **Meta WhatsApp Cloud API** and **Telegram Bot API**.
+- ➕ **Dynamic Watchlist Management:** Click `➕ Add Stock` in the top bar or update `watchlist.txt` to track US (`NVDA`, `AAPL`, `QQQ`, `SPY`) and Indian stocks (`TCS.NS`, `TMPV.NS`, `TMCV.NS`, `RELIANCE.NS`).
+- 🛡️ **15-Minute Intelligent Caching & Fallback:** Prevents API rate limits by caching data and falling back to Yahoo Finance quotes gracefully.
 
 ---
 
-## 📱 Sample Telegram Alert Format
+## 📱 Sample Alert Format
 
+### Long-Term Value Accumulation Alert
 ```text
-📢 STOCK ALERT: TCS (Tata Consultancy Services)
+📢 LONG-TERM ACCUMULATION ALERT: TMPV (Tata Motors Passenger Vehicles)
 ─────────────────────────────
 
-🟡 DECISION: ⚡ MODERATE DIP
+🟢 DECISION: 🏛️ TRANCHE 3 BUY — GENERATIONAL PANIC BARGAIN
 
-💡 Summary: Trading at support level.
+💡 Summary: Generational Value Dip: Price (₹301.10) is 59.3% below 52W High (₹739.70) with Weekly RSI at 31.8. High-conviction long-term DCA entry.
 
-💵 Current Price: ₹2,208.00
-🛑 Stop Loss: ₹2,053.40
-🎯 Target 1: ₹2,350.00 (+6.4%)
-🎯 Target 2: ₹2,400.00
-⚖️ Risk/Reward: 1:1.5
-📊 Signal Strength: 5/7
+💵 Current Price: ₹301.10
+📉 52-Week High Drawdown: -59.3%
+📊 Weekly RSI: 31.8
+🏛️ Recommended Tranche: 45% Capital Allocation
+⭐ Quality Score: 7/10
 
-🛒 What To Do: Buy 10% to 20% on dip.
+🛒 Action Plan: Generational Value Entry: Deploy 45% of your total planned budget for TMPV. Hold for 5–10+ years.
 
-🔍 Details:
-   Trend: ✅ Strong
-   Support: ✅ At Support
-   RSI: 42.0 (✅ Buy Zone)
-   Momentum: ❌ Weak
-
-⏰ Generated: 09 Sep 2026 22:59 IST
+⏰ Generated: 10 Sep 2026 15:27 IST
 ```
 
 ---
@@ -90,30 +88,30 @@ uv venv && uv sync
 ```
 
 ### 3. Environment Credentials Setup (`.env`)
-Ensure `.env` contains your Telegram credentials:
+Create or edit `.env` for push notifications:
 ```ini
-TELEGRAM_BOT_TOKEN="8867216133:AAG3S-n-mScYyyOA2qntAJCBrFkd9xBVtwc"
-TELEGRAM_CHAT_ID="707881814"
+# Telegram Push Notifications
+TELEGRAM_BOT_TOKEN="your_bot_token"
+TELEGRAM_CHAT_ID="your_chat_id"
+
+# Meta WhatsApp Cloud API (Optional)
+WHATSAPP_TOKEN="your_meta_system_user_token"
+WHATSAPP_PHONE_ID="your_whatsapp_phone_number_id"
+WHATSAPP_RECIPIENT="your_phone_number_with_country_code"
 ```
 
 ---
 
-## 📲 How to Setup Telegram Bot Credentials (100% Free)
-
-1. **Create Bot:** Open Telegram, search for `@BotFather`, send `/newbot`, and copy `TELEGRAM_BOT_TOKEN`.
-2. **Get Chat ID:** Search for `@userinfobot` on Telegram, tap **Start**, and copy `TELEGRAM_CHAT_ID`.
-3. **Initialize Bot:** Search for your bot's username on Telegram and click **Start**.
-
----
-
-## 🧪 Terminal CLI Commands
+## 🧪 Terminal CLI & API Commands
 
 | Action | Command |
 | :--- | :--- |
 | **Start Web Dashboard Server** | `uv run python api_server.py` |
-| **Run Dry-Run Scan (Terminal Preview)** | `uv run python buy_on_dip_notifier.py --dry-run` |
-| **Run Live Market Scan & Alert** | `uv run python buy_on_dip_notifier.py` |
-| **Force Scan for ALL Watchlist Stocks** | `uv run python buy_on_dip_notifier.py --all-stocks` |
+| **Run Long-Term DCA Scan (Terminal Preview)** | `uv run python buy_on_dip_notifier.py --dry-run --mode long_term` |
+| **Run Short-Term Swing Scan (Terminal Preview)** | `uv run python buy_on_dip_notifier.py --dry-run --mode swing` |
+| **Run Live Market Scan & Push Alerts** | `uv run python buy_on_dip_notifier.py` |
+| **Scan Custom Symbol List** | `uv run python buy_on_dip_notifier.py --symbols TMPV.NS,TMCV.NS,AAPL,NVDA` |
+| **Run PyTest Suite** | `uv run pytest` |
 
 ---
 
@@ -128,6 +126,9 @@ TELEGRAM_CHAT_ID="707881814"
   ```bash
   uv run python api_server.py
   ```
+
+- **Legacy Symbol Errors (e.g. TATAMOTORS)**:
+  Run `uv run python database.py` to trigger the automatic database migration to replace delisted symbols with `TMPV` and `TMCV`.
 
 - **Stop Server**: Press `CTRL + C` in the terminal running `api_server.py`.
 
